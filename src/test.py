@@ -44,6 +44,8 @@ if __name__ == '__main__':
 
     # done: test ModelTree
     model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY)
+    print(model_tree)
+    print(model_tree.linear.weight, model_tree.linear.bias)
     print(model_tree.children_dict.items())
     output = model_tree(x_train, y_train)
     # todo: check results

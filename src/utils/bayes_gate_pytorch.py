@@ -61,6 +61,21 @@ class ModelNode(nn.Module):
         self.gate_upp1 = nn.Parameter(self.reference_tree.gate.gate_upp1)
         self.gate_upp2 = nn.Parameter(self.reference_tree.gate.gate_upp2)
 
+    def __repr__(self):
+        repr_string = ('ModelNode(\n'
+                       '  dims=({dim1}, {dim2}),\n'
+                       '  gate_dim1=({low1:0.4f}, {high1:0.4f}),\n'
+                       '  gate_dim2=({low2:0.4f}, {high2:0.4f}),\n'
+                       ')\n')
+        return repr_string.format(
+            dim1=self.gate_dim1,
+            dim2=self.gate_dim2,
+            low1=self.gate_low1.item(),
+            high1=self.gate_upp1.item(),
+            low2=self.gate_low2.item(),
+            high2=self.gate_upp2.item()
+        )
+
     def forward(self, x):
         """
         compute the log probability that each cell passes the gate
@@ -126,26 +141,27 @@ class ModelTree(nn.Module):
         loss = 0.0
 
         for idx in range(len(x)):
-            # print("forward sample %d out of %d samples" % (idx, len(x)))
             leaf_probs = []
 
             thislevel = [(self.root, torch.zeros((x[idx].shape[0],)))]
             while thislevel:
                 nextlevel = list()
                 for (node, pathlogp) in thislevel:
-                    if str(id(node)) in self.children_dict:
+                    if len(self.children_dict[str(id(node))]) > 0:
                         logp, reg_penalty = node.forward(x[idx])
                         loss += reg_penalty * self.regularisation_penalty
-                        nextlevel.append((self.children_dict[str(id(node))], pathlogp + logp))
+                        for child_node in self.children_dict[str(id(node))]:
+                            nextlevel.append((child_node, pathlogp + logp))
                     else:
                         leaf_probs.append(torch.sum(torch.exp(pathlogp)) * 1.0 / x[idx].shape[0])
                 thislevel = nextlevel
 
             output['leaf_probs'].append(leaf_probs)
-            # print("extracted features:", leaf_probs)
 
         output['leaf_probs'] = torch.tensor(output['leaf_probs'])
         output['y_pred'] = torch.sigmoid(self.linear(output['leaf_probs'])).squeeze(1)
+
+        output['reg_loss'] = loss
 
         if len(y) == 0:
             loss = None

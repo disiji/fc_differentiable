@@ -6,6 +6,7 @@ from utils.bayes_gate_pytorch import *
 import utils.load_data as dh
 from sklearn.model_selection import train_test_split
 import torch
+import time
 
 
 if __name__ == '__main__':
@@ -17,7 +18,7 @@ if __name__ == '__main__':
     FEATURES = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A','CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
     FEATURE2ID = dict((FEATURES[i],i) for i in range(len(FEATURES)))
     LOGISTIC_K=10
-    REGULARIZATION_PENALTY=10.
+    REGULARIZATION_PENALTY=100000.
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
     # y: a list of labels; 1 is CLL, 0 is healthy
@@ -47,14 +48,16 @@ if __name__ == '__main__':
     train_recall = []
     eval_recall = []
 
-    n_epoch = 50
+    n_epoch = 1000
     batch_size = 10
-    n_batch_print = 10
+    n_batch_print = 100
 
     # optimizer
-    learning_rate = 1.0
+    learning_rate = 0.005
     optimizer = torch.optim.Adam(model_tree.parameters(), lr=learning_rate)
     # optimizer = optim.SGD(model_tree.parameters(), lr=0.001, momentum=0.9)
+
+    start = time.time()
 
     for epoch in range(n_epoch):
 
@@ -79,24 +82,23 @@ if __name__ == '__main__':
 
             # forward + backward + optimize
             output = model_tree(x_batch, y_batch)
-            # leaf_probs = output['leaf_probs']
             loss = output['loss']
-            y_pred = (output['y_pred'].data.numpy() > 0) * 1.0
-            y_batch = y_batch.data.numpy()
             loss.backward()
             optimizer.step()
 
             # statistics
+            y_pred = (output['y_pred'].data.numpy() > 0) * 1.0
+            y_batch = y_batch.data.numpy()
+            # leaf_probs = output['leaf_probs']
             train_loss.append(output['loss'])
             train_acc.append(sum(y_pred == y_batch) * 1.0 / batch_size)
             train_precision.append(precision_score(y_batch, y_pred, average='macro'))
             train_recall.append(recall_score(y_batch, y_pred, average='macro'))
 
             # print every n_batch_print mini-batches
-            if i % n_batch_print == n_batch_print - 1:
+            if (i + epoch * len(x_train) // batch_size) % n_batch_print == n_batch_print - 1:
                 train_loss_avg = sum(train_loss[-n_batch_print:]) * 1.0 / n_batch_print
                 train_acc_avg = sum(train_acc[-n_batch_print:]) * 1.0 / n_batch_print
-
                 # eval
                 output_eval = model_tree(x_eval, y_eval)
                 # leaf_probs = output_eval['leaf_probs']
@@ -106,7 +108,10 @@ if __name__ == '__main__':
                 eval_precision.append(precision_score(y_eval.data.numpy(), y_pred, average='macro'))
                 eval_recall.append(recall_score(y_eval.data.numpy(), y_pred, average='macro'))
 
-                print('[%d, %5d] training, eval loss: %.3f, %.3f' % (epoch, i, train_loss_avg, eval_loss[-1]))
-                print('[%d, %5d] training, eval acc: %.3f, %.3f' % (epoch, i, train_acc_avg, eval_acc[-1]))
+                print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (epoch, i, train_loss_avg, eval_loss[-1]))
+                print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (epoch, i, train_acc_avg, eval_acc[-1]))
 
+    print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
     print('Finished Training')
+
+
