@@ -2,9 +2,11 @@ from __future__ import division
 import pandas as pd
 import os
 import pickle
+import numpy as np
+
 
 def load_cll_data(diagnosis_filename, cytometry_dir, features):
-    X, y = [],[]
+    X, y = [], []
     feat_df = pd.read_csv(diagnosis_filename, sep='\t')
     for filename in os.listdir(cytometry_dir):
         sample_id = int(filename.split('_')[3])
@@ -39,14 +41,14 @@ def filter_slope(data, dim1, dim2, x1, x2, y1, y2):
     :param y2: float
     :return: (n_filtered_datapoints, n_features)
     """
-    if x1 <0 or y1 < 0 or x2 < 0 or y2 < 0:
+    if x1 < 0 or y1 < 0 or x2 < 0 or y2 < 0:
         raise ValueError("x1 or x2 or y1 or y2 is negative.")
     if dim1 > data.shape[1] or dim1 < 0 or dim2 > data.shape[1] or dim2 < 0:
         raise ValueError("dim1 and dim2 should be an int between 0 and data.shape[0].")
-    if y1/x1 < y2/x2:
+    if y1 / x1 < y2 / x2:
         raise ValueError("Slope of [(0,0), (x1, y1)] should be greater than the slope of [(0,0), (x2, y2)].")
-    gradient = data[:,dim2] / data[:,dim1]
-    idx = (gradient < y1/x1) & (gradient > y2/x2)
+    gradient = data[:, dim2] / data[:, dim1]
+    idx = (gradient < y1 / x1) & (gradient > y2 / x2)
     return data[idx]
 
 
@@ -62,13 +64,13 @@ def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2):
     :param y2: float
     :return: (n_filtered_datapoints, n_features)
     """
-    if x1 <0 or y1 < 0 or x2 < 0 or y2 < 0:
+    if x1 < 0 or y1 < 0 or x2 < 0 or y2 < 0:
         raise ValueError("x1 or x2 or y1 or y2 is negative.")
     if dim1 > data.shape[1] or dim1 < 0 or dim2 > data.shape[1] or dim2 < 0:
         raise ValueError("dim1 and dim2 should be an int between 0 and data.shape[0].")
     if x1 > x2 or y1 > y2:
         raise ValueError("x2 should be greater than x1, y2 should be greater than y1.")
-    idx = (data[:,dim1] > x1) & (data[:,dim1] < x2) & (data[:,dim2] > y1) & (data[:,dim2] < y2)
+    idx = (data[:, dim1] > x1) & (data[:, dim1] < x2) & (data[:, dim2] > y1) & (data[:, dim2] < y2)
     return data[idx]
 
 
@@ -80,11 +82,11 @@ def filter_cll_4d(x_list):
     """
     idx = 3
     filtered_x_list = [filter_slope(x, 0, 1, 2048, 4096, 2048, 2560) for x in x_list]
-    print('After first gate %d remain in sample %s' %(filtered_x_list[idx].shape[0], idx))
+    print('After first gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
     filtered_x_list = [filter_rectangle(x, 2, 3, 102, 921, 2048, 3891) for x in filtered_x_list]
-    print('After second gate %d remain in sample %s' %(filtered_x_list[idx].shape[0], idx))
+    print('After second gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
     filtered_x_list = [filter_rectangle(x, 0, 4, 921, 2150, 102, 921) for x in filtered_x_list]
-    print('After third gate %d remain in sample %s' %(filtered_x_list[idx].shape[0], idx))
+    print('After third gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
     # filtered_x_list = [filter_rectangle(x, 5, 6, 1638, 3891, 2150, 3891) for x in filtered_x_list]
     # print('After fourth gate %d remain in sample %s' %(filtered_x_list[idx].shape[0], idx))
     # filtered_x_list = [filter_rectangle(x, 7, 8, 0, 1228, 0, 1843) for x in filtered_x_list]
@@ -102,9 +104,47 @@ def filter_cll(x_list):
     """
     idx = 3
     filtered_x_list = [filter_slope(x, 0, 1, 2048, 4096, 2048, 2560) for x in x_list]
-    print('After first gate %d remain in sample %s' %(filtered_x_list[idx].shape[0], idx))
+    print('After first gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
 
     return filtered_x_list
 
 
-def normalize
+def normalize_x_list(x_list, offset=None, scale=None):
+    """
+    x_list = normalized_x_list * scale + offset;
+    normalized_x_list = (x_list - offset) / scale
+    :param x_list: a list of numpy array, each of shape (, n_cell_features)
+    :param offset: a numpy array of shape (n_cell_features, )
+    :param scale: a numpy array of shape (n_cell_featuers, )
+    :return:
+    """
+    if offset == None or scale == None:
+        x_min = np.array([x.min(axis=0) for x in x_list]).min(axis=0)
+        x_max = np.array([x.max(axis=0) for x in x_list]).max(axis=0)
+        offset = x_min
+        scale = x_max - x_min
+    normalized_x_list = [(x - offset) / scale for x in x_list]
+    return normalized_x_list, offset, scale
+
+
+def normalize_nested_tree(nested_tree, offset, scale, feature2id):
+    """
+    normalized_x = (x - offset) / scale
+    :param nested_tree:
+    :param offset: a numpy array of shape (n_cell_features, )
+    :param scale: a numpy array of shape (n_cell_featuers, )
+    :param feature2id: a dictionary that maps feature names to column idx
+    :return:
+    """
+    if nested_tree == []:
+        return []
+    # normalize the root node
+    gate = nested_tree[0]
+    dim1, dim2 = feature2id[gate[0][0]], feature2id[gate[1][0]]
+    gate[0][1] = (gate[0][1] - offset[dim1]) / scale[dim1]
+    gate[0][2] = (gate[0][2] - offset[dim1]) / scale[dim1]
+    gate[1][1] = (gate[1][1] - offset[dim2]) / scale[dim2]
+    gate[1][2] = (gate[1][2] - offset[dim2]) / scale[dim2]
+
+    return [gate, [normalize_nested_tree(child, offset, scale, feature2id)
+                   for child in nested_tree[1]]]

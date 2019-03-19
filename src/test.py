@@ -144,6 +144,9 @@ if __name__ == '__main__':
             print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (epoch, i, train_loss_avg, eval_loss[-1]))
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (epoch, i, train_acc_avg, eval_acc[-1]))
 
+    # visualization
+
+
     print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
     print('Finished Training')
 

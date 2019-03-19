@@ -20,7 +20,7 @@ if __name__ == '__main__':
     FEATURES_FULL = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
     FEATURE2ID = dict((FEATURES[i], i) for i in range(len(FEATURES)))
     LOGISTIC_K = 10.0
-    REGULARIZATION_PENALTY = 0.
+    REGULARIZATION_PENALTY = 1.
     LOAD_DATA_FROM_PICKLE = True
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
@@ -38,9 +38,9 @@ if __name__ == '__main__':
         with open(DATA_DIR + 'y_list.pkl', 'wb') as f:
             pickle.dump(y, f)
     # scale the data
-    x = [_ / 1000.0 for _ in x]
-    print("Number of cells in each sample after filtering:", [_.shape[0] for _ in x])
-    x_train, x_eval, y_train, y_eval = train_test_split(x, y, test_size=0.30, random_state=123)
+    normalized_x, offset, scale = dh.normalize_x_list(x)
+    print("Number of cells in each sample after filtering:", [_.shape[0] for _ in normalized_x])
+    x_train, x_eval, y_train, y_eval = train_test_split(normalized_x, y, test_size=0.30, random_state=123)
     x_train = [torch.tensor(_, dtype=torch.float32) for _ in x_train]
     x_eval = [torch.tensor(_, dtype=torch.float32) for _ in x_eval]
     y_train = torch.tensor(y_train, dtype=torch.float32)
@@ -50,27 +50,50 @@ if __name__ == '__main__':
 
     nested_list = \
         [
-            [[u'CD5', 1638. / 1000, 3891. / 1000], [u'CD19', 2150. / 1000, 3891. / 1000]],
+            [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
             [
                 [
-                    [[u'CD10', 0, 1228. / 1000], [u'CD79b', 0, 1843. / 1000]],
+                    [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
                     []
                 ]
             ]
         ]
     nested_list_init = \
         [
-            [[u'CD5', 2000. / 1000, 3000 / 1000], [u'CD19', 2000. / 1000, 3000. / 1000]],
+            [[u'CD5', 2000., 3000.], [u'CD19', 2000., 3000.]],
             [
                 [
-                    [[u'CD10', 1000. / 1000, 2000. / 1000], [u'CD79b', 1000. / 1000, 2000. / 1000]],
+                    [[u'CD10', 1000., 2000.], [u'CD79b', 1000., 2000.]],
                     []
                 ]
             ]
         ]
+    nested_list = dh.normalize_nested_tree(nested_list, offset, scale, FEATURE2ID)
+    nested_list_init = dh.normalize_nested_tree(nested_list_init, offset, scale, FEATURE2ID)
+    # AFTER NORMALIZATION...
+    # nested_list = \
+    #     [
+    #         [[u'CD5', 0.402, 0.955], [u'CD19', 0.549, 0.99]],
+    #         [
+    #             [
+    #                 [[u'CD10', 0, 0.300], [u'CD79b', 0, 0.465]],
+    #                 []
+    #             ]
+    #         ]
+    #     ]
+    # nested_list_init = \
+    #     [
+    #         [[u'CD5', 0.490, 0.736], [u'CD19', 0.510, 0.766]],
+    #         [
+    #             [
+    #                 [[u'CD10', 0.244, 0.488], [u'CD79b', 0.252, 0.504]],
+    #                 []
+    #             ]
+    #         ]
+    #     ]
     reference_tree = ReferenceTree(nested_list, FEATURE2ID)
     init_tree = ReferenceTree(nested_list_init, FEATURE2ID)
-    # init_tree = None
+    init_tree = None
 
     # Just for sanity check...
     for logistic_k in [1, 10, 100, 1000, 10000]:
@@ -146,7 +169,6 @@ if __name__ == '__main__':
 
         # print every n_batch_print mini-batches
         if epoch % n_epoch_print == n_epoch_print - 1:
-            print(output)
             print(model_tree)
             train_loss_avg = sum(train_loss[-n_mini_batch:]) * 1.0 / n_mini_batch
             train_acc_avg = sum(train_acc[-n_mini_batch:]) * 1.0 / n_mini_batch
