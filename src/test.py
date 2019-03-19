@@ -4,6 +4,7 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 import numpy as np
 from utils.bayes_gate_pytorch import *
+import time
 
 if __name__ == '__main__':
 
@@ -27,23 +28,36 @@ if __name__ == '__main__':
                 ]
             ]
         ]
+
+    nested_list_init = \
+        [
+            [[u'CD5', 0.5, 0.6], [u'CD19', 0.5, 0.6]],
+            [
+                [
+                    [[u'CD10', 0.4, 0.8], [u'CD79b', 0.4, 0.8]],
+                    []
+                ]
+            ]
+        ]
     FEATURES = ['CD5', 'CD19', 'CD10', 'CD79b']
     FEATURE2ID = dict((FEATURES[i], i) for i in range(len(FEATURES)))
     LOGISTIC_K = 10
     REGULARIZATION_PENALTY = 10.
     reference_tree = ReferenceTree(nested_list, FEATURE2ID)
+    init_tree = ReferenceTree(nested_list_init, FEATURE2ID)
 
     # done: Test ModelNode works: only the first gate [[u'CD5', 1638, 3891], [u'CD19', 2150, 3891]] is used.
-    model_node = ModelNode(LOGISTIC_K, reference_tree)
+    model_node = ModelNode(LOGISTIC_K, reference_tree, init_tree)
     for name, param in model_node.named_parameters():
         if param.requires_grad:
             print(name, param.data)
     # todo: check results
     logp, reg_penalty = model_node(x_train[0])
-    print(logp)
+    # print(logp)
 
     # done: test ModelTree
-    model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY)
+    model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
+                           init_tree=init_tree)
     print(model_tree)
     print(model_tree.linear.weight, model_tree.linear.bias)
     print(model_tree.children_dict.items())
@@ -52,7 +66,7 @@ if __name__ == '__main__':
     leaf_probs = output['leaf_probs']
     y_pred = output['y_pred']
     loss = output['loss']
-    print("leaf_probs:", leaf_probs)
+    # print("leaf_probs:", leaf_probs)
 
     # todo: train the model
     # Keep track of losses for plotting
@@ -65,28 +79,28 @@ if __name__ == '__main__':
     train_recall = []
     eval_recall = []
 
-    n_epoch = 2
-    batch_size = 10
-    n_batch_print = 10
+    n_epoch = 100
+    batch_size = int(len(x_train)/10)
+    n_epoch_print = 20
 
     # optimizer
-    learning_rate = 1.0
-    optimizer = torch.optim.Adam(model_tree.parameters(), lr=learning_rate)
-    # optimizer = optim.SGD(model_tree.parameters(), lr=0.001, momentum=0.9)
+    learning_rate = 3.14
+    # optimizer = torch.optim.Adam(model_tree.parameters(), lr=learning_rate)
+    optimizer = torch.optim.SGD(model_tree.parameters(), lr=learning_rate)
+
+    start = time.time()
 
     for epoch in range(n_epoch):
-
-        running_loss_train = 0.0
 
         # shuffle training data
         idx_shuffle = np.array([_ for _ in range(len(x_train))])
         shuffle(idx_shuffle)
-
         x_train = [x_train[_] for _ in idx_shuffle]
         y_train = y_train[idx_shuffle]
-        sample_id_train = [sample_id_train[_] for _ in idx_shuffle]
 
-        for i in range(len(x_train) // batch_size):
+        n_mini_batch = len(x_train) // batch_size
+
+        for i in range(n_mini_batch):
 
             # generate mini batch data
             idx_batch = [_ for _ in range(batch_size * i, batch_size * (i + 1))]
@@ -98,36 +112,38 @@ if __name__ == '__main__':
 
             # forward + backward + optimize
             output = model_tree(x_batch, y_batch)
-            leaf_probs = output['leaf_probs']
             loss = output['loss']
-            y_pred = (output['y_pred'].data.numpy() > 0) * 1.0
-            y_batch = y_batch.data.numpy()
             loss.backward()
             optimizer.step()
 
             # statistics
+            y_pred = (output['y_pred'].data.numpy() > 0.5) * 1.0
+            y_batch = y_batch.data.numpy()
+            # leaf_probs = output['leaf_probs']
             train_loss.append(output['loss'])
             train_acc.append(sum(y_pred == y_batch) * 1.0 / batch_size)
             train_precision.append(precision_score(y_batch, y_pred, average='macro'))
             train_recall.append(recall_score(y_batch, y_pred, average='macro'))
 
-            # print every n_batch_print mini-batches
-            if i % n_batch_print == n_batch_print - 1:
-                train_loss_avg = sum(train_loss[-n_batch_print:]) * 1.0 / n_batch_print
-                train_acc_avg = sum(train_acc[-n_batch_print:]) * 1.0 / n_batch_print
+        # print every n_batch_print mini-batches
+        if epoch % n_epoch_print == n_epoch_print - 1:
+            train_loss_avg = sum(train_loss[-n_mini_batch:]) * 1.0 / n_mini_batch
+            train_acc_avg = sum(train_acc[-n_mini_batch:]) * 1.0 / n_mini_batch
+            # eval
+            output_eval = model_tree(x_eval, y_eval)
+            # leaf_probs = output_eval['leaf_probs']
+            y_pred = (output_eval['y_pred'].data.numpy() > 0.5) * 1.0
+            eval_loss.append(output_eval['loss'])
+            eval_acc.append(sum(y_pred == y_eval.data.numpy()) * 1.0 / len(x_eval))
+            eval_precision.append(precision_score(y_eval.data.numpy(), y_pred, average='macro'))
+            eval_recall.append(recall_score(y_eval.data.numpy(), y_pred, average='macro'))
+            print(model_tree)
+            print("=================")
+            print(output_eval['reg_loss'], output_eval['loss'], nn.BCELoss(output_eval['y_pred'], y_eval))
+            # print(model_tree.linear.weight, model_tree.linear.bias, -model_tree.linear.bias/model_tree.linear.weight)
+            print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (epoch, i, train_loss_avg, eval_loss[-1]))
+            print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (epoch, i, train_acc_avg, eval_acc[-1]))
 
-                # eval
-                output_eval = model_tree(x_eval, y_eval)
-                # leaf_probs = output_eval['leaf_probs']
-                y_pred = (output_eval['y_pred'].data.numpy() > 0) * 1.0
-                eval_loss.append(output_eval['loss'])
-                eval_acc.append(sum(y_pred == y_eval.data.numpy()) * 1.0 / len(x_eval))
-                eval_precision.append(precision_score(y_eval.data.numpy(), y_pred, average='macro'))
-                eval_recall.append(recall_score(y_eval.data.numpy(), y_pred, average='macro'))
-
-                print('[%d, %5d] training, eval loss: %.3f, %.3f' % (epoch, i, train_loss_avg, eval_loss[-1]))
-                print('[%d, %5d] training, eval acc: %.3f, %.3f' % (epoch, i, train_acc_avg, eval_acc[-1]))
-
+    print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
     print('Finished Training')
 
-    # todo: plotting

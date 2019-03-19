@@ -45,7 +45,7 @@ class ReferenceTree(object):
 
 
 class ModelNode(nn.Module):
-    def __init__(self, logistic_k, reference_tree):
+    def __init__(self, logistic_k, reference_tree, init_tree=None):
         """
         :param logistic_k:
         :param reference_tree:
@@ -56,10 +56,16 @@ class ModelNode(nn.Module):
         self.reference_tree = reference_tree
         self.gate_dim1 = self.reference_tree.gate.gate_dim1
         self.gate_dim2 = self.reference_tree.gate.gate_dim2
-        self.gate_low1 = nn.Parameter(self.reference_tree.gate.gate_low1)
-        self.gate_low2 = nn.Parameter(self.reference_tree.gate.gate_low2)
-        self.gate_upp1 = nn.Parameter(self.reference_tree.gate.gate_upp1)
-        self.gate_upp2 = nn.Parameter(self.reference_tree.gate.gate_upp2)
+        if init_tree == None:
+            self.gate_low1 = nn.Parameter(self.reference_tree.gate.gate_low1)
+            self.gate_low2 = nn.Parameter(self.reference_tree.gate.gate_low2)
+            self.gate_upp1 = nn.Parameter(self.reference_tree.gate.gate_upp1)
+            self.gate_upp2 = nn.Parameter(self.reference_tree.gate.gate_upp2)
+        else:
+            self.gate_low1 = nn.Parameter(init_tree.gate.gate_low1)
+            self.gate_low2 = nn.Parameter(init_tree.gate.gate_low2)
+            self.gate_upp1 = nn.Parameter(init_tree.gate.gate_upp1)
+            self.gate_upp2 = nn.Parameter(init_tree.gate.gate_upp2)
 
     def __repr__(self):
         repr_string = ('ModelNode(\n'
@@ -95,7 +101,7 @@ class ModelNode(nn.Module):
 
 class ModelTree(nn.Module):
 
-    def __init__(self, reference_tree, logistic_k=10, regularisation_penalty=10.):
+    def __init__(self, reference_tree, logistic_k=10, regularisation_penalty=10., init_tree=None):
         """
         :param args: pass values for variable n_cell_features, n_sample_features,
         :param kwargs: pass keyworded values for variable logistic_k=?, regularisation_penality=?.
@@ -104,24 +110,31 @@ class ModelTree(nn.Module):
         self.logistic_k = logistic_k
         self.regularisation_penalty = regularisation_penalty
         self.children_dict = nn.ModuleDict()
-        self.root = self.add(reference_tree)
+        self.root = self.add(reference_tree,init_tree)
         self.n_sample_features = reference_tree.n_leafs
 
         # define parameters in the logistic regression model
-        self.linear = torch.nn.Linear(self.n_sample_features, 1)
-        self.criterion = nn.BCELoss()
+        self.linear = nn.Linear(self.n_sample_features, 1)
+        self.criterion = nn.BCEWithLogitsLoss()
 
-    def add(self, reference_tree):
+    def add(self, reference_tree, init_tree=None):
         """
         construct self.children_dict dictionary for all nodes in the tree structure.
         :param reference_tree:
         :return:
         """
-        node = ModelNode(self.logistic_k, reference_tree)
+        node = ModelNode(self.logistic_k, reference_tree, init_tree)
         child_list = nn.ModuleList()
-        for child in reference_tree.children:
-            child_node = self.add(child)
-            child_list.append(child_node)
+        if init_tree == None:
+            for child in reference_tree.children:
+                child_node = self.add(child)
+                child_list.append(child_node)
+        else:
+            for _ in range(len(reference_tree.children)):
+                child_ref = reference_tree.children[_]
+                child_init = init_tree.children[_]
+                child_node = self.add(child_ref, child_init)
+                child_list.append(child_node)
         self.children_dict.update({str(id(node)): child_list})
         return node
 
@@ -140,33 +153,32 @@ class ModelTree(nn.Module):
                   'y_pred': None}
         loss = 0.0
 
-        for idx in range(len(x)):
-            leaf_probs = []
+        leaf_probs = y.new_zeros((y.shape[0], self.n_sample_features))
+        for sample_idx in range(len(x)):
 
-            thislevel = [(self.root, torch.zeros((x[idx].shape[0],)))]
-            while thislevel:
-                nextlevel = list()
-                for (node, pathlogp) in thislevel:
+            this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)))]
+            leaf_idx = 0
+            while this_level:
+                next_level = list()
+                for (node, pathlogp) in this_level:
+                    logp, reg_penalty = node(x[sample_idx])
+                    loss = loss + reg_penalty * self.regularisation_penalty
+                    pathlogp = pathlogp + logp
                     if len(self.children_dict[str(id(node))]) > 0:
-                        logp, reg_penalty = node.forward(x[idx])
-                        loss += reg_penalty * self.regularisation_penalty
                         for child_node in self.children_dict[str(id(node))]:
-                            nextlevel.append((child_node, pathlogp + logp))
+                            next_level.append((child_node, pathlogp))
                     else:
-                        leaf_probs.append(torch.sum(torch.exp(pathlogp)) * 1.0 / x[idx].shape[0])
-                thislevel = nextlevel
+                        leaf_probs[sample_idx, leaf_idx] = pathlogp.exp().sum(dim=0) / x[sample_idx].shape[0]
+                this_level = next_level
 
-            output['leaf_probs'].append(leaf_probs)
-
-        output['leaf_probs'] = torch.tensor(output['leaf_probs'])
+        output['leaf_probs'] = leaf_probs
         output['y_pred'] = torch.sigmoid(self.linear(output['leaf_probs'])).squeeze(1)
-
         output['reg_loss'] = loss
 
         if len(y) == 0:
             loss = None
         else:
-            loss += self.criterion(output['y_pred'], y)
+            loss = loss + self.criterion(self.linear(output['leaf_probs']).squeeze(1), y)
 
         output['loss'] = loss
         return output

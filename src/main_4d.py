@@ -7,6 +7,7 @@ import utils.load_data as dh
 from sklearn.model_selection import train_test_split
 import time
 import torch
+import pickle
 
 if __name__ == '__main__':
 
@@ -19,62 +20,74 @@ if __name__ == '__main__':
     FEATURES_FULL = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
     FEATURE2ID = dict((FEATURES[i], i) for i in range(len(FEATURES)))
     LOGISTIC_K = 10.0
-    REGULARIZATION_PENALTY = 1.
+    REGULARIZATION_PENALTY = 0.
+    LOAD_DATA_FROM_PICKLE = True
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
     # y: a list of labels; 1 is CLL, 0 is healthy
-    x, y = dh.load_cll_data(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, FEATURES_FULL)
-    x = dh.filter_cll_4d(x)
+    if LOAD_DATA_FROM_PICKLE:
+        with open(DATA_DIR + "filtered_4d_x_list.pkl", 'rb') as f:
+            x = pickle.load(f)
+        with open(DATA_DIR + 'y_list.pkl', 'rb') as f:
+            y = pickle.load(f)
+    else:
+        x, y = dh.load_cll_data(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, FEATURES_FULL)
+        x = dh.filter_cll_4d(x)
+        with open(DATA_DIR + 'filtered_4d_x_list.pkl', 'wb') as f:
+            pickle.dump(x, f)
+        with open(DATA_DIR + 'y_list.pkl', 'wb') as f:
+            pickle.dump(y, f)
     # scale the data
-    x = [_/1000.0 for _ in x]
+    x = [_ / 1000.0 for _ in x]
     print("Number of cells in each sample after filtering:", [_.shape[0] for _ in x])
-    x_train, x_eval, y_train, y_eval = train_test_split(x, y, test_size=0.10, random_state=123)
+    x_train, x_eval, y_train, y_eval = train_test_split(x, y, test_size=0.30, random_state=123)
     x_train = [torch.tensor(_, dtype=torch.float32) for _ in x_train]
     x_eval = [torch.tensor(_, dtype=torch.float32) for _ in x_eval]
     y_train = torch.tensor(y_train, dtype=torch.float32)
     y_eval = torch.tensor(y_eval, dtype=torch.float32)
 
-
     print("Running time for loading the data: %.3f seconds." % (time.time() - start))
 
     nested_list = \
         [
-            [[u'CD5', 1638./1000, 3891./1000], [u'CD19', 2150./1000, 3891./1000]],
+            [[u'CD5', 1638. / 1000, 3891. / 1000], [u'CD19', 2150. / 1000, 3891. / 1000]],
             [
                 [
-                    [[u'CD10', 0, 1228./1000], [u'CD79b', 0, 1843./1000]],
+                    [[u'CD10', 0, 1228. / 1000], [u'CD79b', 0, 1843. / 1000]],
                     []
                 ]
             ]
         ]
-    # nested_list = \
-    #     [
-    #         [[u'CD5', 1000./1000, 3891./1000], [u'CD19', 1000./1000, 3891./1000]],
-    #         [
-    #             [
-    #                 [[u'CD10', 1000./1000, 1228./1000], [u'CD79b', 1000./1000, 1843./1000]],
-    #                 []
-    #             ]
-    #         ]
-    #     ]
+    nested_list_init = \
+        [
+            [[u'CD5', 2000. / 1000, 3000 / 1000], [u'CD19', 2000. / 1000, 3000. / 1000]],
+            [
+                [
+                    [[u'CD10', 1000. / 1000, 2000. / 1000], [u'CD79b', 1000. / 1000, 2000. / 1000]],
+                    []
+                ]
+            ]
+        ]
     reference_tree = ReferenceTree(nested_list, FEATURE2ID)
+    init_tree = ReferenceTree(nested_list_init, FEATURE2ID)
+    # init_tree = None
 
     # Just for sanity check...
-    # for logistic_k in [1, 10, 100, 1000, 10000]:
-    #     model_tree = ModelTree(reference_tree, logistic_k=logistic_k, regularisation_penalty=REGULARIZATION_PENALTY)
-    #     # extract features with bounding boxes in the reference tree;
-    #     threshold = 0.0252
-    #     features_train = model_tree(x_train, y_train)['leaf_probs'].numpy()[:, 0]
-    #     features_eval = model_tree(x_eval, y_eval)['leaf_probs'].numpy()[:, 0]
-    #     y_pred_train = (features_train > threshold) * 1.0
-    #     y_pred_eval = (features_eval > threshold) * 1.0
-    #     print("With SOFT features(steepness = %d) extracted with bounding boxes in reference tree..." % logistic_k)
-    #     print("Acc on trainning and eval data: %.3f, %.3f"% (
-    #         sum((y_pred_train == y_train.numpy())) * 1.0 / len(x_train),
-    #         sum((y_pred_eval == y_eval.numpy())) * 1.0 / len(x_eval)))
+    for logistic_k in [1, 10, 100, 1000, 10000]:
+        model_tree = ModelTree(reference_tree, logistic_k=logistic_k, regularisation_penalty=REGULARIZATION_PENALTY)
+        # extract features with bounding boxes in the reference tree;
+        threshold = 0.0252
+        features_train = model_tree(x_train, y_train)['leaf_probs'].detach().numpy()[:, 0]
+        features_eval = model_tree(x_eval, y_eval)['leaf_probs'].detach().numpy()[:, 0]
+        y_pred_train = (features_train > threshold) * 1.0
+        y_pred_eval = (features_eval > threshold) * 1.0
+        print("With SOFT features(steepness = %d) extracted with bounding boxes in reference tree..." % logistic_k)
+        print("Acc on training and eval data: %.3f, %.3f" % (
+            sum((y_pred_train == y_train.numpy())) * 1.0 / len(x_train),
+            sum((y_pred_eval == y_eval.numpy())) * 1.0 / len(x_eval)))
 
-    model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY)
-
+    model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
+                           init_tree=init_tree)
 
     # Keep track of losses for plotting
     train_loss = []
@@ -88,10 +101,10 @@ if __name__ == '__main__':
 
     n_epoch = 1000
     batch_size = len(x_train)
-    n_epoch_print = 50
+    n_epoch_print = 20
 
     # optimizer
-    learning_rate = 3.14
+    learning_rate = 1.0
     # optimizer = torch.optim.Adam(model_tree.parameters(), lr=learning_rate)
     optimizer = torch.optim.SGD(model_tree.parameters(), lr=learning_rate)
 
@@ -108,7 +121,6 @@ if __name__ == '__main__':
         n_mini_batch = len(x_train) // batch_size
 
         for i in range(n_mini_batch):
-
             # generate mini batch data
             idx_batch = [_ for _ in range(batch_size * i, batch_size * (i + 1))]
             x_batch = [x_train[_] for _ in idx_batch]
@@ -134,6 +146,8 @@ if __name__ == '__main__':
 
         # print every n_batch_print mini-batches
         if epoch % n_epoch_print == n_epoch_print - 1:
+            print(output)
+            print(model_tree)
             train_loss_avg = sum(train_loss[-n_mini_batch:]) * 1.0 / n_mini_batch
             train_acc_avg = sum(train_acc[-n_mini_batch:]) * 1.0 / n_mini_batch
             # eval
@@ -146,11 +160,10 @@ if __name__ == '__main__':
             eval_precision.append(precision_score(y_eval.data.numpy(), y_pred, average='macro'))
             eval_recall.append(recall_score(y_eval.data.numpy(), y_pred, average='macro'))
             print(model_tree)
+            print(output_eval['reg_loss'], output_eval['loss'])
             # print(model_tree.linear.weight, model_tree.linear.bias, -model_tree.linear.bias/model_tree.linear.weight)
             print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (epoch, i, train_loss_avg, eval_loss[-1]))
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (epoch, i, train_acc_avg, eval_acc[-1]))
 
     print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
     print('Finished Training')
-
-

@@ -105,3 +105,6 @@ def filter_cll(x_list):
     print('After first gate %d remain in sample %s' %(filtered_x_list[idx].shape[0], idx))
 
     return filtered_x_list
+
+
+def normalize
