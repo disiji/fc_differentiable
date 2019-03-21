@@ -2,6 +2,7 @@ from __future__ import division
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from math import *
 
 
 class Gate(object):
@@ -57,15 +58,36 @@ class ModelNode(nn.Module):
         self.gate_dim1 = self.reference_tree.gate.gate_dim1
         self.gate_dim2 = self.reference_tree.gate.gate_dim2
         if init_tree == None:
-            self.gate_low1 = nn.Parameter(torch.tensor(self.reference_tree.gate.gate_low1, dtype=torch.float32))
-            self.gate_low2 = nn.Parameter(torch.tensor(self.reference_tree.gate.gate_low2, dtype=torch.float32))
-            self.gate_upp1 = nn.Parameter(torch.tensor(self.reference_tree.gate.gate_upp1, dtype=torch.float32))
-            self.gate_upp2 = nn.Parameter(torch.tensor(self.reference_tree.gate.gate_upp2, dtype=torch.float32))
+            self.gate_low1_param = nn.Parameter(
+                torch.tensor(self.__log_odds_ratio__(self.reference_tree.gate.gate_low1), dtype=torch.float32))
+            self.gate_low2_param = nn.Parameter(
+                torch.tensor(self.__log_odds_ratio__(self.reference_tree.gate.gate_low2), dtype=torch.float32))
+            self.gate_upp1_param = nn.Parameter(
+                torch.tensor(self.__log_odds_ratio__(self.reference_tree.gate.gate_upp1), dtype=torch.float32))
+            self.gate_upp2_param = nn.Parameter(
+                torch.tensor(self.__log_odds_ratio__(self.reference_tree.gate.gate_upp2), dtype=torch.float32))
         else:
-            self.gate_low1 = nn.Parameter(torch.tensor(init_tree.gate.gate_low1, dtype=torch.float32))
-            self.gate_low2 = nn.Parameter(torch.tensor(init_tree.gate.gate_low2, dtype=torch.float32))
-            self.gate_upp1 = nn.Parameter(torch.tensor(init_tree.gate.gate_upp1, dtype=torch.float32))
-            self.gate_upp2 = nn.Parameter(torch.tensor(init_tree.gate.gate_upp2, dtype=torch.float32))
+            self.gate_low1_param = nn.Parameter(
+                torch.tensor(self.__log_odds_ratio__(init_tree.gate.gate_low1), dtype=torch.float32))
+            self.gate_low2_param = nn.Parameter(
+                torch.tensor(self.__log_odds_ratio__(init_tree.gate.gate_low2), dtype=torch.float32))
+            self.gate_upp1_param = nn.Parameter(
+                torch.tensor(self.__log_odds_ratio__(init_tree.gate.gate_upp1), dtype=torch.float32))
+            self.gate_upp2_param = nn.Parameter(
+                torch.tensor(self.__log_odds_ratio__(init_tree.gate.gate_upp2), dtype=torch.float32))
+
+    def __log_odds_ratio__(self, p):
+        """
+        retur log(p/1-p)
+        :param p: a float
+        :return: a float
+        """
+        if p < 1e-10:
+            return -10.0
+        if p > 1.0 - 1e-10:
+            return 10.0
+        else:
+            return log(p /(1 - p)),
 
 
     def __repr__(self):
@@ -77,10 +99,10 @@ class ModelNode(nn.Module):
         return repr_string.format(
             dim1=self.gate_dim1,
             dim2=self.gate_dim2,
-            low1=self.gate_low1.item(),
-            high1=self.gate_upp1.item(),
-            low2=self.gate_low2.item(),
-            high2=self.gate_upp2.item()
+            low1=F.sigmoid(self.gate_low1_param).item(),
+            high1=F.sigmoid(self.gate_upp1_param).item(),
+            low2=F.sigmoid(self.gate_low2_param).item(),
+            high2=F.sigmoid(self.gate_upp2_param).item()
         )
 
     def forward(self, x):
@@ -89,14 +111,19 @@ class ModelNode(nn.Module):
         :param x: (n_cell, n_cell_features)
         :return: (logp, reg_penalty)
         """
-        logp = F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim1] - self.gate_low1))) \
-               + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - self.gate_upp1))) \
-               + F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim2] - self.gate_low2))) \
-               + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim2] - self.gate_upp2)))
-        reg_penalty = (self.gate_low1- self.reference_tree.gate.gate_low1) ** 2\
-                      + (self.gate_low2 - self.reference_tree.gate.gate_low2) ** 2\
-                      + (self.gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2\
-                      + (self.gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
+        gate_low1 = F.sigmoid(self.gate_low1_param)
+        gate_low2 = F.sigmoid(self.gate_low2_param)
+        gate_upp1 = F.sigmoid(self.gate_upp1_param)
+        gate_upp2 = F.sigmoid(self.gate_upp2_param)
+
+        logp = F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim1] - gate_low1))) \
+               + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
+               + F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim2] - gate_low2))) \
+               + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim2] - gate_upp2)))
+        reg_penalty = (gate_low1 - self.reference_tree.gate.gate_low1) ** 2 \
+                      + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
+                      + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
+                      + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
         return logp, reg_penalty
 
 
@@ -111,7 +138,7 @@ class ModelTree(nn.Module):
         self.logistic_k = logistic_k
         self.regularisation_penalty = regularisation_penalty
         self.children_dict = nn.ModuleDict()
-        self.root = self.add(reference_tree,init_tree)
+        self.root = self.add(reference_tree, init_tree)
         self.n_sample_features = reference_tree.n_leafs
 
         # define parameters in the logistic regression model
@@ -172,7 +199,7 @@ class ModelTree(nn.Module):
                         leaf_probs[sample_idx, leaf_idx] = pathlogp.exp().sum(dim=0) / x[sample_idx].shape[0]
                 this_level = next_level
 
-        loss = loss * self.regularisation_penalty / len(x) # only count regularization loss once
+        loss = loss * self.regularisation_penalty / len(x)  # only count regularization loss once
         output['leaf_probs'] = leaf_probs
         output['y_pred'] = torch.sigmoid(self.linear(output['leaf_probs'])).squeeze(1)
         output['reg_loss'] = loss

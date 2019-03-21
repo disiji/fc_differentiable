@@ -4,7 +4,9 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 import numpy as np
 from utils.bayes_gate_pytorch import *
+from utils import plot as util_plot
 import time
+import torch.nn as nn
 
 if __name__ == '__main__':
 
@@ -42,7 +44,7 @@ if __name__ == '__main__':
     FEATURES = ['CD5', 'CD19', 'CD10', 'CD79b']
     FEATURE2ID = dict((FEATURES[i], i) for i in range(len(FEATURES)))
     LOGISTIC_K = 10
-    REGULARIZATION_PENALTY = 10.
+    REGULARIZATION_PENALTY = 1.
     reference_tree = ReferenceTree(nested_list, FEATURE2ID)
     init_tree = ReferenceTree(nested_list_init, FEATURE2ID)
 
@@ -51,13 +53,26 @@ if __name__ == '__main__':
     for name, param in model_node.named_parameters():
         if param.requires_grad:
             print(name, param.data)
-    # todo: check results
+    # done: check results
     logp, reg_penalty = model_node(x_train[0])
-    # print(logp)
+    print("reg_penalty of root node with a different init_tree:", reg_penalty)
+    model_node = ModelNode(LOGISTIC_K, reference_tree, init_tree=None)
+    for name, param in model_node.named_parameters():
+        if param.requires_grad:
+            print(name, param.data)
+    # done: check results
+    logp, reg_penalty = model_node(x_train[0])
+    print("reg_penalty of root node with the reference tree:", reg_penalty)
 
     # done: test ModelTree
     model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
                            init_tree=init_tree)
+    output = model_tree(x_train, y_train)
+    print("reg_penalty and loss with a different init_tree:", output['reg_loss'], output['loss'])
+    model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
+                           init_tree=None)
+    output = model_tree(x_train, y_train)
+    print("reg_penalty and loss with the reference tree:", output['reg_loss'], output['loss'])
     print(model_tree)
     print(model_tree.linear.weight, model_tree.linear.bias)
     print(model_tree.children_dict.items())
@@ -79,9 +94,9 @@ if __name__ == '__main__':
     train_recall = []
     eval_recall = []
 
-    n_epoch = 100
-    batch_size = int(len(x_train)/10)
-    n_epoch_print = 20
+    n_epoch = 10
+    batch_size = int(len(x_train) / 10)
+    n_epoch_print = 50
 
     # optimizer
     learning_rate = 3.14
@@ -101,7 +116,6 @@ if __name__ == '__main__':
         n_mini_batch = len(x_train) // batch_size
 
         for i in range(n_mini_batch):
-
             # generate mini batch data
             idx_batch = [_ for _ in range(batch_size * i, batch_size * (i + 1))]
             x_batch = [x_train[_] for _ in idx_batch]
@@ -139,14 +153,15 @@ if __name__ == '__main__':
             eval_recall.append(recall_score(y_eval.data.numpy(), y_pred, average='macro'))
             print(model_tree)
             print("=================")
-            print(output_eval['reg_loss'], output_eval['loss'], nn.BCELoss(output_eval['y_pred'], y_eval))
+            # print(output_eval['reg_loss'], output_eval['loss'],
+            #       nn.BCEWithLogitsLoss(output_eval['leaf_probs'].squeeze(1), y_eval))
             # print(model_tree.linear.weight, model_tree.linear.bias, -model_tree.linear.bias/model_tree.linear.weight)
             print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (epoch, i, train_loss_avg, eval_loss[-1]))
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (epoch, i, train_acc_avg, eval_acc[-1]))
 
     # visualization
-
+    ax = util_plot.plot_gate(x_train[0][:, 0], x_train[0][:,1 ], 'CD5', 'CD19', 0.2, 0.8, 0.2, 0.8, filename="../fig/test.png",
+         normalized=True)
 
     print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
     print('Finished Training')
-

@@ -2,7 +2,7 @@ from random import shuffle
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 import numpy as np
-from utils.bayes_gate_pytorch import *
+from utils.bayes_gate_pytorch_sigmoid_trans import *
 import utils.load_data as dh
 from sklearn.model_selection import train_test_split
 import time
@@ -20,7 +20,7 @@ if __name__ == '__main__':
     FEATURES_FULL = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
     FEATURE2ID = dict((FEATURES[i], i) for i in range(len(FEATURES)))
     LOGISTIC_K = 10.0
-    REGULARIZATION_PENALTY = 1.
+    REGULARIZATION_PENALTY = 10.
     LOAD_DATA_FROM_PICKLE = True
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
@@ -45,6 +45,10 @@ if __name__ == '__main__':
     x_eval = [torch.tensor(_, dtype=torch.float32) for _ in x_eval]
     y_train = torch.tensor(y_train, dtype=torch.float32)
     y_eval = torch.tensor(y_eval, dtype=torch.float32)
+    # x_train = [torch.tensor(_, dtype=torch.float32) for _ in x_train]
+    # x_eval = [torch.tensor(_, dtype=torch.float32) for _ in normalized_x]
+    # y_train = torch.tensor(y_train, dtype=torch.float32)
+    # y_eval = torch.tensor(y, dtype=torch.float32)
 
     print("Running time for loading the data: %.3f seconds." % (time.time() - start))
 
@@ -96,10 +100,11 @@ if __name__ == '__main__':
     init_tree = None
 
     # Just for sanity check...
-    for logistic_k in [1, 10, 100, 1000, 10000]:
+    for logistic_k in [1, 10, 100, 1000, 10000, 100000]:
         model_tree = ModelTree(reference_tree, logistic_k=logistic_k, regularisation_penalty=REGULARIZATION_PENALTY)
         # extract features with bounding boxes in the reference tree;
-        threshold = 0.0252
+        # threshold = 0.0252
+        threshold = 0.01
         features_train = model_tree(x_train, y_train)['leaf_probs'].detach().numpy()[:, 0]
         features_eval = model_tree(x_eval, y_eval)['leaf_probs'].detach().numpy()[:, 0]
         y_pred_train = (features_train > threshold) * 1.0
@@ -111,10 +116,13 @@ if __name__ == '__main__':
 
     model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
                            init_tree=init_tree)
+    print("Initialize the model tree as:", model_tree)
 
     # Keep track of losses for plotting
     train_loss = []
+    train_reg_loss = []
     eval_loss = []
+    eval_reg_loss = []
     train_acc = []
     eval_acc = []
     train_precision = []
@@ -122,12 +130,12 @@ if __name__ == '__main__':
     train_recall = []
     eval_recall = []
 
-    n_epoch = 1000
+    n_epoch = 100
     batch_size = len(x_train)
     n_epoch_print = 20
 
     # optimizer
-    learning_rate = 1.0
+    learning_rate = 0.5
     # optimizer = torch.optim.Adam(model_tree.parameters(), lr=learning_rate)
     optimizer = torch.optim.SGD(model_tree.parameters(), lr=learning_rate)
 
@@ -163,14 +171,16 @@ if __name__ == '__main__':
             y_batch = y_batch.data.numpy()
             # leaf_probs = output['leaf_probs']
             train_loss.append(output['loss'])
+            train_reg_loss.append(output['reg_loss'])
             train_acc.append(sum(y_pred == y_batch) * 1.0 / batch_size)
             train_precision.append(precision_score(y_batch, y_pred, average='macro'))
             train_recall.append(recall_score(y_batch, y_pred, average='macro'))
 
         # print every n_batch_print mini-batches
-        if epoch % n_epoch_print == n_epoch_print - 1:
+        if epoch % n_epoch_print == 0:
             print(model_tree)
             train_loss_avg = sum(train_loss[-n_mini_batch:]) * 1.0 / n_mini_batch
+            train_reg_loss_avg = sum(train_reg_loss[-n_mini_batch:]) * 1.0 / n_mini_batch
             train_acc_avg = sum(train_acc[-n_mini_batch:]) * 1.0 / n_mini_batch
             # eval
             output_eval = model_tree(x_eval, y_eval)
@@ -178,6 +188,7 @@ if __name__ == '__main__':
             print(output_eval['y_pred'])
             y_pred = (output_eval['y_pred'].data.numpy() > 0.5) * 1.0
             eval_loss.append(output_eval['loss'])
+            eval_reg_loss.append(output_eval['reg_loss'])
             eval_acc.append(sum(y_pred == y_eval.data.numpy()) * 1.0 / len(x_eval))
             eval_precision.append(precision_score(y_eval.data.numpy(), y_pred, average='macro'))
             eval_recall.append(recall_score(y_eval.data.numpy(), y_pred, average='macro'))
@@ -185,7 +196,21 @@ if __name__ == '__main__':
             print(output_eval['reg_loss'], output_eval['loss'])
             # print(model_tree.linear.weight, model_tree.linear.bias, -model_tree.linear.bias/model_tree.linear.weight)
             print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (epoch, i, train_loss_avg, eval_loss[-1]))
+            print('[Epoch %d, batch %d] training, eval reg loss: %.3f, %.3f' % (epoch, i, train_reg_loss_avg, eval_reg_loss[-1]))
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (epoch, i, train_acc_avg, eval_acc[-1]))
 
     print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
+    import matplotlib.pyplot as plt
+    plt.plot(train_loss)
+    plt.plot([i*n_epoch_print for i in range(len(eval_loss))], eval_loss)
+    plt.legend(["train loss", "eval loss"])
+    plt.show()
+    plt.plot(train_reg_loss)
+    plt.plot([i*n_epoch_print for i in range(len(eval_reg_loss))], eval_reg_loss)
+    plt.legend(["train reg loss", "eval reg loss"])
+    plt.show()
+    plt.plot(train_acc)
+    plt.plot([i*n_epoch_print for i in range(len(eval_acc))], eval_acc)
+    plt.legend(["train acc", "eval acc"])
+    plt.show()
     print('Finished Training')
