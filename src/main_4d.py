@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 import time
 import torch
 import pickle
+from math import *
 
 if __name__ == '__main__':
 
@@ -20,7 +21,7 @@ if __name__ == '__main__':
     FEATURES_FULL = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
     FEATURE2ID = dict((FEATURES[i], i) for i in range(len(FEATURES)))
     LOGISTIC_K = 10.0
-    REGULARIZATION_PENALTY = 10.
+    REGULARIZATION_PENALTY = 1.
     LOAD_DATA_FROM_PICKLE = True
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
@@ -75,16 +76,16 @@ if __name__ == '__main__':
     nested_list = dh.normalize_nested_tree(nested_list, offset, scale, FEATURE2ID)
     nested_list_init = dh.normalize_nested_tree(nested_list_init, offset, scale, FEATURE2ID)
     # AFTER NORMALIZATION...
-    # nested_list = \
-    #     [
-    #         [[u'CD5', 0.402, 0.955], [u'CD19', 0.549, 0.99]],
-    #         [
-    #             [
-    #                 [[u'CD10', 0, 0.300], [u'CD79b', 0, 0.465]],
-    #                 []
-    #             ]
-    #         ]
-    #     ]
+    nested_list = \
+        [
+            [[u'CD5', 0.402, 0.955], [u'CD19', 0.549, 0.99]],
+            [
+                [
+                    [[u'CD10', 0, 0.300], [u'CD79b', 0, 0.465]],
+                    []
+                ]
+            ]
+        ]
     # nested_list_init = \
     #     [
     #         [[u'CD5', 0.490, 0.736], [u'CD19', 0.510, 0.766]],
@@ -129,22 +130,30 @@ if __name__ == '__main__':
     eval_precision = []
     train_recall = []
     eval_recall = []
+    log_decision_boundary = []
 
-    n_epoch = 100
-    batch_size = len(x_train)
-    n_epoch_print = 20
+    n_epoch = 1000
+    batch_size = 5
+    n_epoch_eval = 10
+    n_mini_batch_update_gates = 100
+    # update classifier parameter and boundary parameter alternatively;
+    # update boundary parameters after every 4 iterations of updating the classifer parameters
 
     # optimizer
-    learning_rate = 0.5
+    learning_rate_classifier = 0.05
+    learning_rate_gates = 0.5
     # optimizer = torch.optim.Adam(model_tree.parameters(), lr=learning_rate)
-    optimizer = torch.optim.SGD(model_tree.parameters(), lr=learning_rate)
+    classifier_params = [model_tree.linear.weight, model_tree.linear.bias]
+    gates_params = [p for p in model_tree.parameters() if p not in classifier_params]
+    optimizer_classifier = torch.optim.SGD(classifier_params, lr=learning_rate_classifier)
+    optimizer_gates = torch.optim.SGD(gates_params, lr=learning_rate_gates)
 
     start = time.time()
 
     for epoch in range(n_epoch):
 
         # shuffle training data
-        idx_shuffle = np.array([_ for _ in range(len(x_train))])
+        idx_shuffle = np.array([i for i in range(len(x_train))])
         shuffle(idx_shuffle)
         x_train = [x_train[_] for _ in idx_shuffle]
         y_train = y_train[idx_shuffle]
@@ -153,18 +162,23 @@ if __name__ == '__main__':
 
         for i in range(n_mini_batch):
             # generate mini batch data
-            idx_batch = [_ for _ in range(batch_size * i, batch_size * (i + 1))]
-            x_batch = [x_train[_] for _ in idx_batch]
+            idx_batch = [j for j in range(batch_size * i, batch_size * (i + 1))]
+            x_batch = [x_train[j] for j in idx_batch]
             y_batch = y_train[idx_batch]
 
             # zero the parameter gradients
-            optimizer.zero_grad()
+            optimizer_gates.zero_grad()
+            optimizer_classifier.zero_grad()
 
             # forward + backward + optimize
             output = model_tree(x_batch, y_batch)
             loss = output['loss']
             loss.backward()
-            optimizer.step()
+            if (n_mini_batch * epoch + i) % n_mini_batch_update_gates == 0:
+                print("optimizing gates...")
+                optimizer_gates.step()
+            else:
+                optimizer_classifier.step()
 
             # statistics
             y_pred = (output['y_pred'].data.numpy() > 0.5) * 1.0
@@ -175,9 +189,10 @@ if __name__ == '__main__':
             train_acc.append(sum(y_pred == y_batch) * 1.0 / batch_size)
             train_precision.append(precision_score(y_batch, y_pred, average='macro'))
             train_recall.append(recall_score(y_batch, y_pred, average='macro'))
+            log_decision_boundary.append((-model_tree.linear.bias.detach() / model_tree.linear.weight.detach()))
 
         # print every n_batch_print mini-batches
-        if epoch % n_epoch_print == 0:
+        if epoch % n_epoch_eval == 0:
             print(model_tree)
             train_loss_avg = sum(train_loss[-n_mini_batch:]) * 1.0 / n_mini_batch
             train_reg_loss_avg = sum(train_reg_loss[-n_mini_batch:]) * 1.0 / n_mini_batch
@@ -186,31 +201,57 @@ if __name__ == '__main__':
             output_eval = model_tree(x_eval, y_eval)
             # leaf_probs = output_eval['leaf_probs']
             print(output_eval['y_pred'])
-            y_pred = (output_eval['y_pred'].data.numpy() > 0.5) * 1.0
+            y_eval_pred = (output_eval['y_pred'].detach().numpy() > 0.5) * 1.0
             eval_loss.append(output_eval['loss'])
             eval_reg_loss.append(output_eval['reg_loss'])
-            eval_acc.append(sum(y_pred == y_eval.data.numpy()) * 1.0 / len(x_eval))
-            eval_precision.append(precision_score(y_eval.data.numpy(), y_pred, average='macro'))
-            eval_recall.append(recall_score(y_eval.data.numpy(), y_pred, average='macro'))
+            eval_acc.append(sum(y_eval_pred == y_eval.numpy()) * 1.0 / len(x_eval))
+            eval_precision.append(precision_score(y_eval.numpy(), y_eval_pred, average='macro'))
+            eval_recall.append(recall_score(y_eval.numpy(), y_eval_pred, average='macro'))
+
+
             print(model_tree)
             print(output_eval['reg_loss'], output_eval['loss'])
-            # print(model_tree.linear.weight, model_tree.linear.bias, -model_tree.linear.bias/model_tree.linear.weight)
+            print("w, b, (-b/w):", model_tree.linear.weight.detach().numpy(),
+                  model_tree.linear.bias.detach().numpy(),
+                  log_decision_boundary[-1])
             print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (epoch, i, train_loss_avg, eval_loss[-1]))
-            print('[Epoch %d, batch %d] training, eval reg loss: %.3f, %.3f' % (epoch, i, train_reg_loss_avg, eval_reg_loss[-1]))
+            print('[Epoch %d, batch %d] training, eval reg loss: %.3f, %.3f' % (
+                epoch, i, train_reg_loss_avg, eval_reg_loss[-1]))
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (epoch, i, train_acc_avg, eval_acc[-1]))
+            # fix the threshold
+            features_train = model_tree(x_train, y_train)['leaf_probs'].detach().numpy()[:, 0]
+            features_eval = model_tree(x_eval, y_eval)['leaf_probs'].detach().numpy()[:, 0]
+            threshold = 0.01
+            y_pred_train = (features_train > threshold) * 1.0
+            y_pred_eval = (features_eval > threshold) * 1.0
+            print("With features learned and set decision boundary at 0.01...")
+            print("Acc on training and eval data: %.3f, %.3f" % (
+                sum((y_pred_train == y_train.numpy())) * 1.0 / len(x_train),
+                sum((y_pred_eval == y_eval.numpy())) * 1.0 / len(x_eval)))
+            threshold = 0.028
+            y_pred_train = (features_train > threshold) * 1.0
+            y_pred_eval = (features_eval > threshold) * 1.0
+            print("With features learned and set decision boundary at 0.028...")
+            print("Acc on training and eval data: %.3f, %.3f" % (
+                sum((y_pred_train == y_train.numpy())) * 1.0 / len(x_train),
+                sum((y_pred_eval == y_eval.numpy())) * 1.0 / len(x_eval)))
 
     print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
     import matplotlib.pyplot as plt
+
     plt.plot(train_loss)
-    plt.plot([i*n_epoch_print for i in range(len(eval_loss))], eval_loss)
+    plt.plot([i * n_epoch_eval * n_mini_batch for i in range(len(eval_loss))], eval_loss)
     plt.legend(["train loss", "eval loss"])
     plt.show()
     plt.plot(train_reg_loss)
-    plt.plot([i*n_epoch_print for i in range(len(eval_reg_loss))], eval_reg_loss)
+    plt.plot([i * n_epoch_eval * n_mini_batch for i in range(len(eval_reg_loss))], eval_reg_loss)
     plt.legend(["train reg loss", "eval reg loss"])
     plt.show()
     plt.plot(train_acc)
-    plt.plot([i*n_epoch_print for i in range(len(eval_acc))], eval_acc)
+    plt.plot([i * n_epoch_eval * n_mini_batch for i in range(len(eval_acc))], eval_acc)
     plt.legend(["train acc", "eval acc"])
+    plt.show()
+    plt.plot(log_decision_boundary)
+    plt.legend(["log decision boundary"])
     plt.show()
     print('Finished Training')

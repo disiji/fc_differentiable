@@ -143,6 +143,8 @@ class ModelTree(nn.Module):
 
         # define parameters in the logistic regression model
         self.linear = nn.Linear(self.n_sample_features, 1)
+        self.linear.weight.data.exponential_(1.0)
+        self.linear.bias.data.fill_(-1.0)
         self.criterion = nn.BCEWithLogitsLoss()
 
     def add(self, reference_tree, init_tree=None):
@@ -177,10 +179,14 @@ class ModelTree(nn.Module):
                 y_pred: torch.tensor(n_samples)
                 loss: float
         """
-        output = {'leaf_probs': [],
-                  'y_pred': None}
-        loss = 0.0
+        output = {'leaf_probs': None,
+                  'leaf_logp': None,
+                  'y_pred': None,
+                  'reg_loss': None,
+                  'output_loss': None
+                  }
 
+        loss = 0.0
         leaf_probs = y.new_zeros((y.shape[0], self.n_sample_features))
         for sample_idx in range(len(x)):
 
@@ -200,14 +206,15 @@ class ModelTree(nn.Module):
                 this_level = next_level
 
         loss = loss * self.regularisation_penalty / len(x)  # only count regularization loss once
-        output['leaf_probs'] = leaf_probs
-        output['y_pred'] = torch.sigmoid(self.linear(output['leaf_probs'])).squeeze(1)
         output['reg_loss'] = loss
+        output['leaf_probs'] = leaf_probs
+        output['leaf_logp'] = torch.log(leaf_probs)
+        output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
 
         if len(y) == 0:
             loss = None
         else:
-            loss = loss + self.criterion(self.linear(output['leaf_probs']).squeeze(1), y)
-
+            loss = loss + self.criterion(self.linear(output['leaf_logp']).squeeze(1), y)
         output['loss'] = loss
+
         return output
