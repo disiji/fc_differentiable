@@ -8,7 +8,10 @@ from sklearn.model_selection import train_test_split
 import time
 import torch
 import pickle
+from copy import deepcopy
+from utils import plot as util_plot
 from math import *
+import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
 
@@ -20,9 +23,17 @@ if __name__ == '__main__':
     FEATURES = ['CD5', 'CD19', 'CD10', 'CD79b']
     FEATURES_FULL = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
     FEATURE2ID = dict((FEATURES[i], i) for i in range(len(FEATURES)))
-    LOGISTIC_K = 10.0
-    REGULARIZATION_PENALTY = 1.
+    LOGISTIC_K = 100
+    REGULARIZATION_PENALTY = 10
+    EMPTYNESS_PENALTY = 10 # change the value in bayes_gate_pytorch_sigmoid_trans.py accordingly
     LOAD_DATA_FROM_PICKLE = True
+    n_epoch = 1000
+    batch_size = 20
+    n_epoch_eval = 10
+    n_mini_batch_update_gates = 100
+    learning_rate_classifier = 0.05
+    learning_rate_gates = 0.5
+
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
     # y: a list of labels; 1 is CLL, 0 is healthy
@@ -46,6 +57,8 @@ if __name__ == '__main__':
     x_eval = [torch.tensor(_, dtype=torch.float32) for _ in x_eval]
     y_train = torch.tensor(y_train, dtype=torch.float32)
     y_eval = torch.tensor(y_eval, dtype=torch.float32)
+    normalized_x = [torch.tensor(_, dtype=torch.float32) for _ in normalized_x]
+    y = torch.tensor(y, dtype=torch.float32)
     # x_train = [torch.tensor(_, dtype=torch.float32) for _ in x_train]
     # x_eval = [torch.tensor(_, dtype=torch.float32) for _ in normalized_x]
     # y_train = torch.tensor(y_train, dtype=torch.float32)
@@ -76,16 +89,16 @@ if __name__ == '__main__':
     nested_list = dh.normalize_nested_tree(nested_list, offset, scale, FEATURE2ID)
     nested_list_init = dh.normalize_nested_tree(nested_list_init, offset, scale, FEATURE2ID)
     # AFTER NORMALIZATION...
-    nested_list = \
-        [
-            [[u'CD5', 0.402, 0.955], [u'CD19', 0.549, 0.99]],
-            [
-                [
-                    [[u'CD10', 0, 0.300], [u'CD79b', 0, 0.465]],
-                    []
-                ]
-            ]
-        ]
+    # nested_list = \
+    #     [
+    #         [[u'CD5', 0.402, 0.955], [u'CD19', 0.549, 0.99]],
+    #         [
+    #             [
+    #                 [[u'CD10', 0, 0.300], [u'CD79b', 0, 0.465]],
+    #                 []
+    #             ]
+    #         ]
+    #     ]
     # nested_list_init = \
     #     [
     #         [[u'CD5', 0.490, 0.736], [u'CD19', 0.510, 0.766]],
@@ -98,7 +111,7 @@ if __name__ == '__main__':
     #     ]
     reference_tree = ReferenceTree(nested_list, FEATURE2ID)
     init_tree = ReferenceTree(nested_list_init, FEATURE2ID)
-    init_tree = None
+    # init_tree = None
 
     # Just for sanity check...
     for logistic_k in [1, 10, 100, 1000, 10000, 100000]:
@@ -132,16 +145,22 @@ if __name__ == '__main__':
     eval_recall = []
     log_decision_boundary = []
 
-    n_epoch = 1000
-    batch_size = 5
-    n_epoch_eval = 10
-    n_mini_batch_update_gates = 100
     # update classifier parameter and boundary parameter alternatively;
     # update boundary parameters after every 4 iterations of updating the classifer parameters
 
+    # optimal gates
+    root_gate_init = deepcopy(model_tree.root)
+    leaf_gate_init = deepcopy(model_tree.children_dict[str(id(model_tree.root))][0])
+    train_root_gate_opt = None
+    train_leaf_gate_opt = None
+    eval_root_gate_opt = None
+    eval_leaf_gate_opt = None
+    train_acc_opt = 0
+    eval_acc_opt = 0
+    train_n_iter_opt = 0
+    eval_n_iter_opt = 0
+
     # optimizer
-    learning_rate_classifier = 0.05
-    learning_rate_gates = 0.5
     # optimizer = torch.optim.Adam(model_tree.parameters(), lr=learning_rate)
     classifier_params = [model_tree.linear.weight, model_tree.linear.bias]
     gates_params = [p for p in model_tree.parameters() if p not in classifier_params]
@@ -200,7 +219,6 @@ if __name__ == '__main__':
             # eval
             output_eval = model_tree(x_eval, y_eval)
             # leaf_probs = output_eval['leaf_probs']
-            print(output_eval['y_pred'])
             y_eval_pred = (output_eval['y_pred'].detach().numpy() > 0.5) * 1.0
             eval_loss.append(output_eval['loss'])
             eval_reg_loss.append(output_eval['reg_loss'])
@@ -208,7 +226,19 @@ if __name__ == '__main__':
             eval_precision.append(precision_score(y_eval.numpy(), y_eval_pred, average='macro'))
             eval_recall.append(recall_score(y_eval.numpy(), y_eval_pred, average='macro'))
 
+            # keep track of optimal gates for train and eval set
+            if train_acc_avg > train_acc_opt:
+                train_root_gate_opt = deepcopy(model_tree.root)
+                train_leaf_gate_opt = deepcopy(model_tree.children_dict[str(id(model_tree.root))][0])
+                train_acc_opt = train_acc_avg
+                train_n_iter_opt = (epoch, i)
+            if eval_acc[-1] > eval_acc_opt:
+                eval_root_gate_opt = deepcopy(model_tree.root)
+                eval_leaf_gate_opt = deepcopy(model_tree.children_dict[str(id(model_tree.root))][0])
+                eval_acc_opt = eval_acc[-1]
+                eval_n_iter_opt = (epoch, i)
 
+            # compute
             print(model_tree)
             print(output_eval['reg_loss'], output_eval['loss'])
             print("w, b, (-b/w):", model_tree.linear.weight.detach().numpy(),
@@ -236,22 +266,112 @@ if __name__ == '__main__':
                 sum((y_pred_train == y_train.numpy())) * 1.0 / len(x_train),
                 sum((y_pred_eval == y_eval.numpy())) * 1.0 / len(x_eval)))
 
-    print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
-    import matplotlib.pyplot as plt
 
-    plt.plot(train_loss)
-    plt.plot([i * n_epoch_eval * n_mini_batch for i in range(len(eval_loss))], eval_loss)
-    plt.legend(["train loss", "eval loss"])
-    plt.show()
-    plt.plot(train_reg_loss)
-    plt.plot([i * n_epoch_eval * n_mini_batch for i in range(len(eval_reg_loss))], eval_reg_loss)
-    plt.legend(["train reg loss", "eval reg loss"])
-    plt.show()
-    plt.plot(train_acc)
-    plt.plot([i * n_epoch_eval * n_mini_batch for i in range(len(eval_acc))], eval_acc)
-    plt.legend(["train acc", "eval acc"])
-    plt.show()
-    plt.plot(log_decision_boundary)
-    plt.legend(["log decision boundary"])
-    plt.show()
-    print('Finished Training')
+    ##################### write results
+    print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
+    print("Optimal acc on train and eval during training process: %.3f at [Epoch %d, batch %d] "
+          "and %.3f at [Epoch %d, batch %d]" % (
+              train_acc_opt, train_n_iter_opt[0], train_n_iter_opt[1], eval_acc_opt, eval_n_iter_opt[0],
+              eval_n_iter_opt[1],))
+    with open('../output/results.csv', "a+") as file:
+        y_train_pred = (model_tree(x_train, y_train)['y_pred'].detach().numpy() > 0.5) * 1.0
+        y_eval_pred = (model_tree(x_eval, y_eval)['y_pred'].detach().numpy() > 0.5) * 1.0
+        y_pred = (model_tree(normalized_x, y)['y_pred'].detach().numpy() > 0.5) * 1.0
+        train_accuracy = sum(y_train_pred == y_train.numpy()) * 1.0 / len(x_train)
+        eval_accuracy = sum(y_eval_pred == y_eval.numpy()) * 1.0 / len(x_eval)
+        overall_accuracy = sum(y_pred == y.numpy()) * 1.0 / len(x)
+        file.write("%d, %d, %d, %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d, %d]), %.3f([%d, %d]), %.3f\n" % (
+            LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY,
+            n_epoch, batch_size, n_epoch_eval, n_mini_batch_update_gates,
+            learning_rate_classifier, learning_rate_gates,
+            train_accuracy, eval_accuracy, overall_accuracy,
+            train_acc_opt, train_n_iter_opt[0], train_n_iter_opt[1],
+            eval_acc_opt, eval_n_iter_opt[0], eval_n_iter_opt[1],
+            time.time() - start))
+
+
+        ##################### visualization
+        plt.figure(1)
+
+        plt.subplot(221)
+        plt.plot(train_loss)
+        plt.plot([i * n_epoch_eval * n_mini_batch for i in range(len(eval_loss))], eval_loss)
+        plt.legend(["train loss", "eval loss"])
+
+        plt.subplot(222)
+        plt.plot(train_reg_loss)
+        plt.plot([i * n_epoch_eval * n_mini_batch for i in range(len(eval_reg_loss))], eval_reg_loss)
+        plt.legend(["train reg loss", "eval reg loss"])
+
+        plt.subplot(223)
+        plt.plot(train_acc)
+        plt.plot([i * n_epoch_eval * n_mini_batch for i in range(len(eval_acc))], eval_acc)
+        plt.legend(["train acc", "eval acc"])
+
+        plt.subplot(224)
+        plt.plot(log_decision_boundary)
+        plt.legend(["log decision boundary"])
+
+        plt.savefig("../fig/4D_metrics_k%d_reg%d_emp%d_nepoch%d.png" % (LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch))
+
+        fig_root_pos, ax_root_pos = plt.subplots(nrows=ceil(sum(y) / 5), ncols=5, figsize=(5 * 4, ceil(sum(y) / 5) * 3))
+        fig_leaf_pos, ax_leaf_pos = plt.subplots(nrows=ceil(sum(y) / 5), ncols=5, figsize=(5 * 4, ceil(sum(y) / 5) * 3))
+        fig_root_neg, ax_root_neg = plt.subplots(nrows=ceil((len(y) - sum(y)) / 5), ncols=5,
+                                                 figsize=(5 * 4, ceil((len(y) - sum(y)) / 5) * 3))
+        fig_leaf_neg, ax_leaf_neg = plt.subplots(nrows=ceil((len(y) - sum(y)) / 5), ncols=5,
+                                                 figsize=(5 * 4, ceil((len(y) - sum(y)) / 5) * 3))
+
+        idx_pos = 0
+        idx_neg = 0
+
+        # filter out samples according DAFI gate at root for visualization at leaf
+        filtered_normalized_x = [dh.filter_rectangle(x, 0, 1, 0.402, 0.955, 0.549, 0.99) for x in normalized_x]
+
+        for sample_idx in range(len(normalized_x)):
+            if y[sample_idx] == 1:
+                ax_root_pos[idx_pos // 5, idx_pos % 5] = \
+                    util_plot.plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
+                                         [model_tree.root, train_root_gate_opt, eval_root_gate_opt, root_gate_init,
+                                          reference_tree.gate],
+                                         ["converge", "opt on train", "opt on eval", "init", "DAFi"], FEATURES,
+                                         ax=ax_root_pos[idx_pos // 5, idx_pos % 5], filename=None, normalized=True)
+
+                ax_leaf_pos[idx_pos // 5, idx_pos % 5] = \
+                    util_plot.plot_gates(filtered_normalized_x[sample_idx][:, 2],
+                                         filtered_normalized_x[sample_idx][:, 3],
+                                         [model_tree.children_dict[str(id(model_tree.root))][0], train_leaf_gate_opt,
+                                          eval_leaf_gate_opt,
+                                          leaf_gate_init, reference_tree.children[0].gate],
+                                         ["converge", "opt on train", "opt on eval", "init", "DAFi"], FEATURES,
+                                         ax=ax_leaf_pos[idx_pos // 5, idx_pos % 5], filename=None, normalized=True)
+                idx_pos += 1
+            else:
+                ax_root_neg[idx_neg // 5, idx_neg % 5] = \
+                    util_plot.plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
+                                         [model_tree.root, train_root_gate_opt, eval_root_gate_opt, root_gate_init,
+                                          reference_tree.gate],
+                                         ["converge", "opt on train", "opt on eval", "init", "DAFi"], FEATURES,
+                                         ax=ax_root_neg[idx_neg // 5, idx_neg % 5], filename=None, normalized=True)
+                ax_leaf_neg[idx_neg // 5, idx_neg % 5] = \
+                    util_plot.plot_gates(filtered_normalized_x[sample_idx][:, 2],
+                                         filtered_normalized_x[sample_idx][:, 3],
+                                         [model_tree.children_dict[str(id(model_tree.root))][0], train_leaf_gate_opt,
+                                          eval_leaf_gate_opt,
+                                          leaf_gate_init, reference_tree.children[0].gate],
+                                         ["converge", "opt on train", "opt on eval", "init", "DAFi"], FEATURES,
+                                         ax=ax_leaf_neg[idx_neg // 5, idx_neg % 5], filename=None, normalized=True)
+                idx_neg += 1
+
+        fig_root_pos.tight_layout()
+        fig_leaf_pos.tight_layout()
+        fig_root_neg.tight_layout()
+        fig_leaf_neg.tight_layout()
+
+        fig_root_pos.savefig(
+            "../fig/4D_root_pos_k%d_reg%d_emp%d_nepoch%d.png" % (LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch))
+        fig_root_neg.savefig(
+            "../fig/4D_root_neg_k%d_reg%d_emp%d_nepoch%d.png" % (LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch))
+        fig_leaf_pos.savefig(
+            "../fig/4D_leaf_pos_k%d_reg%d_emp%d_nepoch%d.png" % (LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch))
+        fig_leaf_neg.savefig(
+            "../fig/4D_leaf_neg_k%d_reg%d_emp%d_nepoch%d.png" % (LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch))

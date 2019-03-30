@@ -23,10 +23,6 @@ class Gate(object):
             self.gate_dim2, self.gate_low2, self.gate_upp2 = gate_tuple[1]
             self.gate_dim1 = features2id[self.gate_dim1]
             self.gate_dim2 = features2id[self.gate_dim2]
-            # self.gate_low1 = self.gate_low1
-            # self.gate_low2 = self.gate_low2
-            # self.gate_upp1 = self.gate_upp1
-            # self.gate_upp2 = self.gate_upp2
 
 
 class ReferenceTree(object):
@@ -87,8 +83,7 @@ class ModelNode(nn.Module):
         if p > 1.0 - 1e-10:
             return 10.0
         else:
-            return log(p /(1 - p)),
-
+            return log(p / (1 - p)),
 
     def __repr__(self):
         repr_string = ('ModelNode(\n'
@@ -215,6 +210,11 @@ class ModelTree(nn.Module):
             loss = None
         else:
             loss = loss + self.criterion(self.linear(output['leaf_logp']).squeeze(1), y)
+            # add regularization on the number of cells fall into the leaf gate of negative samples;
+            # todo: replace this part of implementation by adding an attribute in class "Gate" to handle more genreal cases
+            for sample_idx in range(len(y)):
+                if y[sample_idx] == 0:
+                    loss = loss + 10 * leaf_probs[sample_idx][0]
         output['loss'] = loss
 
         return output
