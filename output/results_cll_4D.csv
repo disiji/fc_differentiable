@@ -1,0 +1,6 @@
+LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, INIT_METHOD, LOSS_TYPE, n_epoch, batch_size, n_epoch_eval, n_mini_batch_update_gates, learning_rate_classifier, learning_rate_gates, train_accuracy, eval_accuracy, overall_accuracy, train_acc_opt([Epoch, batch]),eval_acc_opt([Epoch, batch]), running_time
+100, 1.000, 10, dafi_init, logistic, 1000, 20, 20, 100, 0.050, 0.500, 0.784, 0.879, 0.813, 0.865([280; 2]), 0.879([60; 2]), 644.831
+100, 1.000, 10, random_init, logistic, 1000, 20, 20, 100, 0.050, 0.500, 0.851, 0.848, 0.850, 0.851([880; 2]), 0.879([720; 2]), 661.340
+100, 1.000, 10, dafi_init, logistic, 1000, 74, 20, 100, 0.050, 0.500, 0.784, 0.788, 0.785, 0.797([400; 0]), 0.848([180; 0]), 717.706
+100, 1.000, 10, dafi_init, logistic, 1000, 74, 20, 100, 0.050, 0.500, 0.797, 0.788, 0.794, 0.824([320; 0]), 0.879([300; 0]), 799.139
+100, 1.000, 10, random_init, logistic, 1000, 74, 20, 100, 0.050, 0.500, 0.757, 0.818, 0.776, 0.770([800; 0]), 0.909([280; 0]), 815.809

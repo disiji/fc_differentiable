@@ -79,11 +79,10 @@ class ModelNode(nn.Module):
         :return: a float
         """
         if p < 1e-10:
-            return -10.0
+            return torch.tensor([-10.0])
         if p > 1.0 - 1e-10:
-            return 10.0
-        else:
-            return log(p / (1 - p)),
+            return torch.tensor([10.0])
+        return log(p / (1 - p)),
 
     def __repr__(self):
         repr_string = ('ModelNode(\n'
@@ -124,7 +123,8 @@ class ModelNode(nn.Module):
 
 class ModelTree(nn.Module):
 
-    def __init__(self, reference_tree, logistic_k=10, regularisation_penalty=10., init_tree=None):
+    def __init__(self, reference_tree, logistic_k=10, regularisation_penalty=10., emptyness_penalty=10., init_tree=None,
+                 loss_type='logistic'):
         """
         :param args: pass values for variable n_cell_features, n_sample_features,
         :param kwargs: pass keyworded values for variable logistic_k=?, regularisation_penality=?.
@@ -132,6 +132,8 @@ class ModelTree(nn.Module):
         super(ModelTree, self).__init__()
         self.logistic_k = logistic_k
         self.regularisation_penalty = regularisation_penalty
+        self.emptyness_penalty = emptyness_penalty  # typo
+        self.loss_type = loss_type
         self.children_dict = nn.ModuleDict()
         self.root = self.add(reference_tree, init_tree)
         self.n_sample_features = reference_tree.n_leafs
@@ -140,7 +142,10 @@ class ModelTree(nn.Module):
         self.linear = nn.Linear(self.n_sample_features, 1)
         self.linear.weight.data.exponential_(1.0)
         self.linear.bias.data.fill_(-1.0)
-        self.criterion = nn.BCEWithLogitsLoss()
+        if self.loss_type == "logistic":
+            self.criterion = nn.BCEWithLogitsLoss()
+        elif self.loss_type == "MSE":
+            self.criterion = nn.MSELoss()
 
     def add(self, reference_tree, init_tree=None):
         """
@@ -178,11 +183,13 @@ class ModelTree(nn.Module):
                   'leaf_logp': None,
                   'y_pred': None,
                   'reg_loss': None,
-                  'output_loss': None
+                  'log_loss': None,
+                  'loss': None
                   }
 
         loss = 0.0
-        leaf_probs = y.new_zeros((y.shape[0], self.n_sample_features))
+        tensor = torch.tensor((), dtype=torch.float32)
+        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features))
         for sample_idx in range(len(x)):
 
             this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)))]
@@ -209,12 +216,16 @@ class ModelTree(nn.Module):
         if len(y) == 0:
             loss = None
         else:
-            loss = loss + self.criterion(self.linear(output['leaf_logp']).squeeze(1), y)
+            if self.loss_type == "logistic":
+                output['log_loss'] = self.criterion(self.linear(output['leaf_logp']).squeeze(1), y)
+            elif self.loss_type == "MSE":
+                output['log_loss'] = self.criterion(output['y_pred'], y)
+            loss = loss + output['log_loss']
             # add regularization on the number of cells fall into the leaf gate of negative samples;
             # todo: replace this part of implementation by adding an attribute in class "Gate" to handle more genreal cases
             for sample_idx in range(len(y)):
                 if y[sample_idx] == 0:
-                    loss = loss + 10 * leaf_probs[sample_idx][0]
+                    loss = loss + self.emptyness_penalty * leaf_probs[sample_idx][0]
         output['loss'] = loss
 
         return output

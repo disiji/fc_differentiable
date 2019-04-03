@@ -31,8 +31,8 @@ if __name__ == '__main__':
     y_train = torch.tensor(y_train, dtype=torch.float32)
     y_eval = torch.tensor(y_eval, dtype=torch.float32)
 
-    nested_list = dh.get_reference_tree(REFERENCE_TREE_FILENAME) # fix the slope gate
-    nested_list = nested_list[1][0]
+    nested_list = dh.get_reference_tree(REFERENCE_TREE_FILENAME)
+    nested_list = nested_list[1][0] # fix the slope gate
     reference_tree = ReferenceTree(nested_list, FEATURE2ID)
     model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY)
 

@@ -1,0 +1,2 @@
+LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch, batch_size, n_epoch_eval, n_mini_batch_update_gates, learning_rate_classifier, learning_rate_gates, train_accuracy, eval_accuracy, overall_accuracy, train_acc_opt([Epoch, batch]),eval_acc_opt([Epoch, batch]), running_time
+100, 1, 50, 1000, 20, 10, 100, 0.050, 0.500, 0.405, 0.364, 0.393, 0.467([420, 2]), 0.364([0, 2]), 18527.637
