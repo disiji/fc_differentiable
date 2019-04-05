@@ -53,8 +53,8 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
     return ax
 
 
-def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, train_reg_loss, eval_reg_loss,
-                 train_acc, eval_acc, log_decision_boundary, filename):
+def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, train_ref_reg_loss, eval_ref_reg_loss,
+                 train_size_reg_loss, eval_size_reg_loss, train_acc, eval_acc, log_decision_boundary, filename):
     """
 
     :param x_range:
@@ -77,8 +77,10 @@ def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, 
     print("eval_loss:", eval_loss)
     print("train_log_loss:", train_log_loss)
     print("eval_log_loss:", eval_log_loss)
-    print("train_reg_loss:", train_reg_loss)
-    print("eval_reg_loss:", eval_reg_loss)
+    print("train_ref_reg_loss:", train_ref_reg_loss)
+    print("eval_ref_reg_loss:", eval_ref_reg_loss)
+    print("train_size_reg_loss:", train_size_reg_loss)
+    print("eval_size_reg_loss:", eval_size_reg_loss)
     print("train_acc:", train_acc)
     print("eval_acc:", eval_acc)
     print("log_decision_boundary:", log_decision_boundary)
@@ -93,19 +95,24 @@ def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, 
     ax_metric[0, 1].set_xlabel("#Epoch")
     ax_metric[0, 1].legend(["train logL", "eval logL"], prop={'size': 6})
 
-    ax_metric[1, 0].plot(x_range, train_reg_loss)
-    ax_metric[1, 0].plot(x_range, eval_reg_loss)
+    ax_metric[1, 0].plot(x_range, train_ref_reg_loss)
+    ax_metric[1, 0].plot(x_range, eval_ref_reg_loss)
     ax_metric[1, 0].set_xlabel("#Epoch")
-    ax_metric[1, 0].legend(["train reg loss", "eval reg loss"], prop={'size': 6})
+    ax_metric[1, 0].legend(["train reference reg", "eval reference reg"], prop={'size': 6})
 
-    ax_metric[1, 1].plot(x_range, train_acc)
-    ax_metric[1, 1].plot(x_range, eval_acc)
+    ax_metric[1, 1].plot(x_range, train_size_reg_loss)
+    ax_metric[1, 1].plot(x_range, eval_size_reg_loss)
     ax_metric[1, 1].set_xlabel("#Epoch")
-    ax_metric[1, 1].legend(["train acc", "eval acc"], prop={'size': 6})
+    ax_metric[1, 1].legend(["train gate size reg", "eval gate size reg"], prop={'size': 6})
 
-    ax_metric[2, 0].plot(x_range, log_decision_boundary)
+    ax_metric[2, 0].plot(x_range, train_acc)
+    ax_metric[2, 0].plot(x_range, eval_acc)
     ax_metric[2, 0].set_xlabel("#Epoch")
-    ax_metric[2, 0].legend(["log decision boundary"], prop={'size': 6})
+    ax_metric[2, 0].legend(["train acc", "eval acc"], prop={'size': 6})
+
+    ax_metric[2, 1].plot(x_range, log_decision_boundary)
+    ax_metric[2, 1].set_xlabel("#Epoch")
+    ax_metric[2, 1].legend(["log decision boundary"], prop={'size': 6})
 
     fig_metric.tight_layout()
     fig_metric.savefig(filename)
@@ -156,23 +163,26 @@ def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, refer
         if y[sample_idx] == 1:
             ax_root_pos[idx_pos // 5, idx_pos % 5] = \
                 plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
-                           [model_tree.root, train_root_gate_opt, eval_root_gate_opt, root_gate_init,
-                            reference_tree.gate],
-                           ["converge: p=%.3f" % model_pred_prob[sample_idx], "opt on train", "opt on eval", "init",
-                            "DAFi: p=%.3f" % dafi_pred_prob[sample_idx]], FEATURES,
+                           [train_root_gate_opt, eval_root_gate_opt, root_gate_init,
+                            reference_tree.gate, model_tree.root],
+                           ["opt on train", "opt on eval", "init",
+                            "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
+                            "converge: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
                            ax=ax_root_pos[idx_pos // 5, idx_pos % 5], filename=None, normalized=True)
             ax_leaf_pos[idx_pos // 5, idx_pos % 5] = \
                 plot_gates(filtered_normalized_x[sample_idx][:, 2],
                            filtered_normalized_x[sample_idx][:, 3],
-                           [model_tree.children_dict[str(id(model_tree.root))][0], train_leaf_gate_opt,
+                           [train_leaf_gate_opt,
                             eval_leaf_gate_opt,
-                            leaf_gate_init, reference_tree.children[0].gate],
-                           ["converge: p=%.3f" % model_pred_prob[sample_idx], "opt on train", "opt on eval", "init",
-                            "DAFi: p=%.3f" % dafi_pred_prob[sample_idx]], FEATURES,
+                            leaf_gate_init, reference_tree.children[0].gate,
+                            model_tree.children_dict[str(id(model_tree.root))][0]],
+                           ["opt on train", "opt on eval", "init",
+                            "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
+                            "converge: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
                            ax=ax_leaf_pos[idx_pos // 5, idx_pos % 5], filename=None, normalized=True)
             if model_pred[sample_idx] == 0:
-                rect_root_pos = patches.Rectangle((0, 0), 1, 1, linewidth=4, edgecolor='red', facecolor='none')
-                rect_leaf_pos = patches.Rectangle((0, 0), 1, 1, linewidth=4, edgecolor='red', facecolor='none')
+                rect_root_pos = patches.Rectangle((0, 0), 1, 1, linewidth=10, edgecolor='red', facecolor='none')
+                rect_leaf_pos = patches.Rectangle((0, 0), 1, 1, linewidth=10, edgecolor='red', facecolor='none')
                 ax_root_pos[idx_pos // 5, idx_pos % 5].add_patch(rect_root_pos)
                 ax_leaf_pos[idx_pos // 5, idx_pos % 5].add_patch(rect_leaf_pos)
             idx_pos += 1
@@ -180,23 +190,26 @@ def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, refer
         else:
             ax_root_neg[idx_neg // 5, idx_neg % 5] = \
                 plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
-                           [model_tree.root, train_root_gate_opt, eval_root_gate_opt, root_gate_init,
-                            reference_tree.gate],
-                           ["converge: p=%.3f" % model_pred_prob[sample_idx], "opt on train", "opt on eval", "init",
-                            "DAFi: p=%.3f" % dafi_pred_prob[sample_idx]], FEATURES,
+                           [train_root_gate_opt, eval_root_gate_opt, root_gate_init,
+                            reference_tree.gate, model_tree.root],
+                           ["opt on train", "opt on eval", "init",
+                            "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
+                            "converge: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
                            ax=ax_root_neg[idx_neg // 5, idx_neg % 5], filename=None, normalized=True)
             ax_leaf_neg[idx_neg // 5, idx_neg % 5] = \
                 plot_gates(filtered_normalized_x[sample_idx][:, 2],
                            filtered_normalized_x[sample_idx][:, 3],
-                           [model_tree.children_dict[str(id(model_tree.root))][0], train_leaf_gate_opt,
+                           [train_leaf_gate_opt,
                             eval_leaf_gate_opt,
-                            leaf_gate_init, reference_tree.children[0].gate],
-                           ["converge: p=%.3f" % model_pred_prob[sample_idx], "opt on train", "opt on eval", "init",
-                            "DAFi: p=%.3f" % dafi_pred_prob[sample_idx]], FEATURES,
+                            leaf_gate_init, reference_tree.children[0].gate,
+                            model_tree.children_dict[str(id(model_tree.root))][0]],
+                           ["opt on train", "opt on eval", "init",
+                            "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
+                            "converge: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
                            ax=ax_leaf_neg[idx_neg // 5, idx_neg % 5], filename=None, normalized=True)
             if model_pred[sample_idx] == 1:
-                rect_root_neg = patches.Rectangle((0, 0), 1, 1, linewidth=4, edgecolor='red', facecolor='none')
-                rect_leaf_neg = patches.Rectangle((0, 0), 1, 1, linewidth=4, edgecolor='red', facecolor='none')
+                rect_root_neg = patches.Rectangle((0, 0), 1, 1, linewidth=10, edgecolor='red', facecolor='none')
+                rect_leaf_neg = patches.Rectangle((0, 0), 1, 1, linewidth=10, edgecolor='red', facecolor='none')
                 ax_root_neg[idx_neg // 5, idx_neg % 5].add_patch(rect_root_neg)
                 ax_leaf_neg[idx_neg // 5, idx_neg % 5].add_patch(rect_leaf_neg)
             idx_neg += 1

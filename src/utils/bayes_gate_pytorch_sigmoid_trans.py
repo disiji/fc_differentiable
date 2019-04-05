@@ -114,17 +114,18 @@ class ModelNode(nn.Module):
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
                + F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim2] - gate_low2))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim2] - gate_upp2)))
-        reg_penalty = (gate_low1 - self.reference_tree.gate.gate_low1) ** 2 \
+        ref_reg_penalty = (gate_low1 - self.reference_tree.gate.gate_low1) ** 2 \
                       + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
                       + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
                       + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
-        return logp, reg_penalty
+        size_reg_penalty = ((gate_upp1 - gate_low1) * (gate_upp2 - gate_low2) - 1/4) ** 2
+        return logp, ref_reg_penalty, size_reg_penalty
 
 
 class ModelTree(nn.Module):
 
-    def __init__(self, reference_tree, logistic_k=10, regularisation_penalty=10., emptyness_penalty=10., init_tree=None,
-                 loss_type='logistic'):
+    def __init__(self, reference_tree, logistic_k=10, regularisation_penalty=10., emptyness_penalty=10.,
+                 gate_size_penalty=10, init_tree=None, loss_type='logistic'):
         """
         :param args: pass values for variable n_cell_features, n_sample_features,
         :param kwargs: pass keyworded values for variable logistic_k=?, regularisation_penality=?.
@@ -133,6 +134,7 @@ class ModelTree(nn.Module):
         self.logistic_k = logistic_k
         self.regularisation_penalty = regularisation_penalty
         self.emptyness_penalty = emptyness_penalty  # typo
+        self.gate_size_penalty = gate_size_penalty
         self.loss_type = loss_type
         self.children_dict = nn.ModuleDict()
         self.root = self.add(reference_tree, init_tree)
@@ -182,14 +184,15 @@ class ModelTree(nn.Module):
         output = {'leaf_probs': None,
                   'leaf_logp': None,
                   'y_pred': None,
-                  'reg_loss': None,
+                  'ref_reg_loss': 0,
+                  'size_reg_loss': 0,
                   'log_loss': None,
                   'loss': None
                   }
 
-        loss = 0.0
         tensor = torch.tensor((), dtype=torch.float32)
         leaf_probs = tensor.new_zeros((len(x), self.n_sample_features))
+
         for sample_idx in range(len(x)):
 
             this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)))]
@@ -197,8 +200,9 @@ class ModelTree(nn.Module):
             while this_level:
                 next_level = list()
                 for (node, pathlogp) in this_level:
-                    logp, reg_penalty = node(x[sample_idx])
-                    loss = loss + reg_penalty
+                    logp, ref_reg_penalty, size_reg_penalty = node(x[sample_idx])
+                    output['ref_reg_loss'] += ref_reg_penalty * self.regularisation_penalty / len(x)
+                    output['size_reg_loss'] += size_reg_penalty * self.gate_size_penalty / len(x)
                     pathlogp = pathlogp + logp
                     if len(self.children_dict[str(id(node))]) > 0:
                         for child_node in self.children_dict[str(id(node))]:
@@ -207,8 +211,8 @@ class ModelTree(nn.Module):
                         leaf_probs[sample_idx, leaf_idx] = pathlogp.exp().sum(dim=0) / x[sample_idx].shape[0]
                 this_level = next_level
 
-        loss = loss * self.regularisation_penalty / len(x)  # only count regularization loss once
-        output['reg_loss'] = loss
+        loss = output['ref_reg_loss'] + output['size_reg_loss']
+
         output['leaf_probs'] = leaf_probs
         output['leaf_logp'] = torch.log(leaf_probs)
         output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
@@ -225,7 +229,7 @@ class ModelTree(nn.Module):
             # todo: replace this part of implementation by adding an attribute in class "Gate" to handle more genreal cases
             for sample_idx in range(len(y)):
                 if y[sample_idx] == 0:
-                    loss = loss + self.emptyness_penalty * leaf_probs[sample_idx][0]
+                    loss = loss + self.emptyness_penalty * leaf_probs[sample_idx][0] / len(y)
         output['loss'] = loss
 
         return output

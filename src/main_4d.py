@@ -24,25 +24,27 @@ if __name__ == '__main__':
     FEATURES_FULL = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
     FEATURE2ID = dict((FEATURES[i], i) for i in range(len(FEATURES)))
     LOGISTIC_K = 100
-    REGULARIZATION_PENALTY = 0
+    REGULARIZATION_PENALTY = 1.0
     EMPTYNESS_PENALTY = 10
+    GATE_SIZE_PENALTY = 50
     LOAD_DATA_FROM_PICKLE = False
     DAFI_INIT = False
     if DAFI_INIT:
         INIT_METHOD = "dafi_init"
     else:
         INIT_METHOD = "random_init"
-    LOSS_TYPE = 'logistic' # or MSE
+    LOSS_TYPE = 'logistic'  # or MSE
     # LOSS_TYPE = 'MSE'
     n_epoch = 1000
     n_epoch_dafi = 0
     n_epoch_eval = 20
     # update classifier parameter and boundary parameter alternatively;
     # update boundary parameters after every 4 iterations of updating the classifer parameters
-    n_mini_batch_update_gates = 100
-    learning_rate_classifier = 0.5
+    n_mini_batch_update_gates = 50
+    learning_rate_classifier = 0.05
     learning_rate_gates = 0.5
-
+    # batch_size = 74
+    batch_size = 10
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
     # y: a list of labels; 1 is CLL, 0 is healthy
@@ -63,7 +65,7 @@ if __name__ == '__main__':
     # scale the data
     normalized_x, offset, scale = dh.normalize_x_list(x)
     print("Number of cells in each sample after filtering:", [_.shape[0] for _ in normalized_x])
-    x_train, x_eval, y_train, y_eval = train_test_split(normalized_x, y, test_size=0.30, random_state=123)
+    x_train, x_eval, y_train, y_eval = train_test_split(normalized_x, y, test_size=0.10, random_state=123)
     x_train = [torch.tensor(_, dtype=torch.float32) for _ in x_train]
     x_eval = [torch.tensor(_, dtype=torch.float32) for _ in x_eval]
     y_train = torch.tensor(y_train, dtype=torch.float32)
@@ -71,7 +73,6 @@ if __name__ == '__main__':
     normalized_x = [torch.tensor(_, dtype=torch.float32) for _ in normalized_x]
     y = torch.tensor(y, dtype=torch.float32)
 
-    batch_size = len(x_train)
     n_mini_batch = len(x_train) // batch_size
 
     print("Running time for loading the data: %.3f seconds." % (time.time() - start))
@@ -140,12 +141,13 @@ if __name__ == '__main__':
     #         sum((y_pred_train == y_train.numpy())) * 1.0 / len(x_train),
     #         sum((y_pred_eval == y_eval.numpy())) * 1.0 / len(x_eval)))
 
-
     ########### train a classifier on the top of DAFi features
     start = time.time()
     dafi_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
-                               emptyness_penalty=EMPTYNESS_PENALTY,init_tree=None, loss_type = LOSS_TYPE)
-    dafi_optimizer_classifier = torch.optim.SGD([dafi_tree.linear.weight, dafi_tree.linear.bias], lr=learning_rate_classifier)
+                          emptyness_penalty=EMPTYNESS_PENALTY, gate_size_penalty=GATE_SIZE_PENALTY, init_tree=None,
+                          loss_type=LOSS_TYPE)
+    dafi_optimizer_classifier = torch.optim.SGD([dafi_tree.linear.weight, dafi_tree.linear.bias],
+                                                lr=learning_rate_classifier)
     for epoch in range(n_epoch_dafi):
         idx_shuffle = np.array([i for i in range(len(x_train))])
         shuffle(idx_shuffle)
@@ -159,22 +161,24 @@ if __name__ == '__main__':
             output = dafi_tree(x_batch, y_batch)
             loss = output['loss']
             loss.backward()
+            dafi_optimizer_classifier.step()
     print("Running time for training classifier with DAFi gates: %.3f seconds." % (time.time() - start))
-
-
 
     # train differentiable gates model
     start = time.time()
     model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
-                           emptyness_penalty=EMPTYNESS_PENALTY, init_tree=init_tree, loss_type = LOSS_TYPE)
+                           emptyness_penalty=EMPTYNESS_PENALTY, gate_size_penalty=GATE_SIZE_PENALTY,
+                           init_tree=init_tree, loss_type=LOSS_TYPE)
 
     # Keep track of losses for plotting
     train_loss = []
     train_log_loss = []
-    train_reg_loss = []
+    train_ref_reg_loss = []
+    train_size_reg_loss = []
     eval_loss = []
     eval_log_loss = []
-    eval_reg_loss = []
+    eval_ref_reg_loss = []
+    eval_size_reg_loss = []
     train_acc = []
     eval_acc = []
     train_precision = []
@@ -182,7 +186,6 @@ if __name__ == '__main__':
     train_recall = []
     eval_recall = []
     log_decision_boundary = []
-
 
     # optimal gates
     root_gate_init = deepcopy(model_tree.root)
@@ -193,8 +196,8 @@ if __name__ == '__main__':
     eval_leaf_gate_opt = None
     train_acc_opt = 0
     eval_acc_opt = 0
-    train_n_iter_opt = (0,0)
-    eval_n_iter_opt = (0,0)
+    train_n_iter_opt = (0, 0)
+    eval_n_iter_opt = (0, 0)
 
     # optimizer
     classifier_params = [model_tree.linear.weight, model_tree.linear.bias]
@@ -236,7 +239,8 @@ if __name__ == '__main__':
             y_train_pred = (output_train['y_pred'].detach().numpy() > 0.5) * 1.0
             train_loss.append(output_train['loss'])
             train_log_loss.append(output_train['log_loss'])
-            train_reg_loss.append(output_train['reg_loss'])
+            train_ref_reg_loss.append(output_train['ref_reg_loss'])
+            train_size_reg_loss.append(output_train['size_reg_loss'])
             train_acc.append(sum(y_train_pred == y_train.numpy()) * 1.0 / len(x_train))
             train_precision.append(precision_score(y_train.numpy(), y_train_pred, average='macro'))
             train_recall.append(recall_score(y_train.numpy(), y_train_pred, average='macro'))
@@ -247,7 +251,8 @@ if __name__ == '__main__':
             y_eval_pred = (output_eval['y_pred'].detach().numpy() > 0.5) * 1.0
             eval_loss.append(output_eval['loss'])
             eval_log_loss.append(output_eval['log_loss'])
-            eval_reg_loss.append(output_eval['reg_loss'])
+            eval_ref_reg_loss.append(output_eval['ref_reg_loss'])
+            eval_size_reg_loss.append(output_eval['size_reg_loss'])
             eval_acc.append(sum(y_eval_pred == y_eval.numpy()) * 1.0 / len(x_eval))
             eval_precision.append(precision_score(y_eval.numpy(), y_eval_pred, average='macro'))
             eval_recall.append(recall_score(y_eval.numpy(), y_eval_pred, average='macro'))
@@ -265,13 +270,15 @@ if __name__ == '__main__':
                 eval_n_iter_opt = (epoch, i)
 
             # compute
-            print(output_eval['reg_loss'], output_eval['loss'])
+            print(output_eval['ref_reg_loss'], output_eval['size_reg_loss'], output_eval['loss'])
             print("w, b, (-b/w):", model_tree.linear.weight.detach().numpy(),
                   model_tree.linear.bias.detach().numpy(), log_decision_boundary[-1])
             print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (
                 epoch, i, train_loss[-1], eval_loss[-1]))
-            print('[Epoch %d, batch %d] training, eval reg loss: %.3f, %.3f' % (
-                epoch, i, train_reg_loss[-1], eval_reg_loss[-1]))
+            print('[Epoch %d, batch %d] training, eval ref_reg_loss: %.3f, %.3f' % (
+                epoch, i, train_ref_reg_loss[-1], eval_ref_reg_loss[-1]))
+            print('[Epoch %d, batch %d] training, eval size_reg_loss: %.3f, %.3f' % (
+                epoch, i, train_size_reg_loss[-1], eval_size_reg_loss[-1]))
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
                 epoch, i, train_acc[-1], eval_acc[-1]))
 
@@ -289,48 +296,56 @@ if __name__ == '__main__':
         eval_accuracy = sum(y_eval_pred == y_eval.numpy()) * 1.0 / len(x_eval)
         overall_accuracy = sum(y_pred == y.numpy()) * 1.0 / len(x)
         file.write(
-            "%d, %.3f, %d, %s, %s,  %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f\n" % (
-                LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, INIT_METHOD, LOSS_TYPE,
+            "%d, %.3f, %d, %d, %s, %s, %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f, %.3f, %.3f, %.3f\n" % (
+                LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, GATE_SIZE_PENALTY, INIT_METHOD, LOSS_TYPE,
                 n_epoch, batch_size, n_epoch_eval, n_mini_batch_update_gates,
                 learning_rate_classifier, learning_rate_gates,
                 train_accuracy, eval_accuracy, overall_accuracy,
                 train_acc_opt, train_n_iter_opt[0], train_n_iter_opt[1],
                 eval_acc_opt, eval_n_iter_opt[0], eval_n_iter_opt[1],
+                model_tree(x_train, y_train)['log_loss'].detach().numpy(),
+                model_tree(x_eval, y_eval)['log_loss'].detach().numpy(),
+                model_tree(normalized_x, y)['log_loss'].detach().numpy(),
                 time.time() - start))
 
     ####### compute model_pred_prob
     model_pred_prob = model_tree(normalized_x, y)['y_pred'].detach().numpy()
     model_pred = (model_pred_prob > 0.5) * 1.0
     dafi_pred_prob = dafi_tree(normalized_x, y)['y_pred'].detach().numpy()
-    dafi_pred = (dafi_pred_prob  > 0.5) * 1.0
-
+    dafi_pred = (dafi_pred_prob > 0.5) * 1.0
 
     ##################### visualization
 
     ##### plot metrics
     x_range = [i * n_epoch_eval for i in range(n_epoch // n_epoch_eval)]
-    figname_metric = "../fig/4D_k%d_reg%.1f_emp%d_nepoch%d_%s_%s_metrics.png" % (
-        LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch, INIT_METHOD, LOSS_TYPE)
-    util_plot.plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, train_reg_loss, eval_reg_loss,
+    figname_metric = "../fig/4D_k%d_reg%.1f_emp%d_gatesize%d_nepoch%d_batchsize%d_%s_%s_metrics.png" % (
+        LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, GATE_SIZE_PENALTY, n_epoch, batch_size, INIT_METHOD,
+        LOSS_TYPE)
+    util_plot.plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, train_ref_reg_loss,
+                           eval_ref_reg_loss, train_size_reg_loss, eval_size_reg_loss,
                            train_acc, eval_acc, log_decision_boundary, figname_metric)
 
     ##### plot gates
-    figname_root_pos = "../fig/4D_k%d_reg%.1f_emp%d_nepoch%d_%s_%s_root_pos.png" % (
-            LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch, INIT_METHOD, LOSS_TYPE)
-    figname_root_neg = "../fig/4D_k%d_reg%.1f_emp%d_nepoch%d_%s_%s_root_neg.png" % (
-            LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch, INIT_METHOD, LOSS_TYPE)
-    figname_leaf_pos = "../fig/4D_k%d_reg%.1f_emp%d_nepoch%d_%s_%s_leaf_pos.png" % (
-            LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch, INIT_METHOD, LOSS_TYPE)
-    figname_leaf_neg = "../fig/4D_k%d_reg%.1f_emp%d_nepoch%d_%s_%s_leaf_neg.png" % (
-            LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, n_epoch, INIT_METHOD, LOSS_TYPE)
+    figname_root_pos = "../fig/4D_k%d_reg%.1f_emp%d_gatesize%d_nepoch%d_batchsize%d_%s_%s_root_pos.png" % (
+        LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, GATE_SIZE_PENALTY, n_epoch, batch_size, INIT_METHOD,
+        LOSS_TYPE)
+    figname_root_neg = "../fig/4D_k%d_reg%.1f_emp%d_gatesize%d_nepoch%d_batchsize%d_%s_%s_root_neg.png" % (
+        LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, GATE_SIZE_PENALTY, n_epoch, batch_size, INIT_METHOD,
+        LOSS_TYPE)
+    figname_leaf_pos = "../fig/4D_k%d_reg%.1f_emp%d_gatesize%d_nepoch%d_batchsize%d_%s_%s_leaf_pos.png" % (
+        LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, GATE_SIZE_PENALTY, n_epoch, batch_size, INIT_METHOD,
+        LOSS_TYPE)
+    figname_leaf_neg = "../fig/4D_k%d_reg%.1f_emp%d_gatesize%d_nepoch%d_batchsize%d_%s_%s_leaf_neg.png" % (
+        LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, GATE_SIZE_PENALTY, n_epoch, batch_size, INIT_METHOD,
+        LOSS_TYPE)
 
     # filter out samples according DAFI gate at root for visualization at leaf
     filtered_normalized_x = [dh.filter_rectangle(x, 0, 1, 0.402, 0.955, 0.549, 0.99) for x in normalized_x]
 
     util_plot.plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, reference_tree,
-             train_root_gate_opt, eval_root_gate_opt, root_gate_init,
-             train_leaf_gate_opt, eval_leaf_gate_opt, leaf_gate_init,
-             model_pred, model_pred_prob, dafi_pred, dafi_pred_prob,
-             figname_root_pos, figname_root_neg, figname_leaf_pos, figname_leaf_neg)
+                       train_root_gate_opt, eval_root_gate_opt, root_gate_init,
+                       train_leaf_gate_opt, eval_leaf_gate_opt, leaf_gate_init,
+                       model_pred, model_pred_prob, dafi_pred, dafi_pred_prob,
+                       figname_root_pos, figname_root_neg, figname_leaf_pos, figname_leaf_neg)
 
     print("end")
