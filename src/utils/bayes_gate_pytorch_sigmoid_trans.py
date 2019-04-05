@@ -42,7 +42,7 @@ class ReferenceTree(object):
 
 
 class ModelNode(nn.Module):
-    def __init__(self, logistic_k, reference_tree, init_tree=None):
+    def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=1./4):
         """
         :param logistic_k:
         :param reference_tree:
@@ -53,6 +53,7 @@ class ModelNode(nn.Module):
         self.reference_tree = reference_tree
         self.gate_dim1 = self.reference_tree.gate.gate_dim1
         self.gate_dim2 = self.reference_tree.gate.gate_dim2
+        self.gate_size_default = gate_size_default
         if init_tree == None:
             self.gate_low1_param = nn.Parameter(
                 torch.tensor(self.__log_odds_ratio__(self.reference_tree.gate.gate_low1), dtype=torch.float32))
@@ -118,14 +119,14 @@ class ModelNode(nn.Module):
                       + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
                       + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
                       + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
-        size_reg_penalty = ((gate_upp1 - gate_low1) * (gate_upp2 - gate_low2) - 1/4) ** 2
+        size_reg_penalty = ((gate_upp1 - gate_low1) * (gate_upp2 - gate_low2) - self.gate_size_default) ** 2
         return logp, ref_reg_penalty, size_reg_penalty
 
 
 class ModelTree(nn.Module):
 
     def __init__(self, reference_tree, logistic_k=10, regularisation_penalty=10., emptyness_penalty=10.,
-                 gate_size_penalty=10, init_tree=None, loss_type='logistic'):
+                 gate_size_penalty=10, init_tree=None, loss_type='logistic', gate_size_default=1./4):
         """
         :param args: pass values for variable n_cell_features, n_sample_features,
         :param kwargs: pass keyworded values for variable logistic_k=?, regularisation_penality=?.
@@ -135,6 +136,7 @@ class ModelTree(nn.Module):
         self.regularisation_penalty = regularisation_penalty
         self.emptyness_penalty = emptyness_penalty  # typo
         self.gate_size_penalty = gate_size_penalty
+        self.gate_size_default = gate_size_default
         self.loss_type = loss_type
         self.children_dict = nn.ModuleDict()
         self.root = self.add(reference_tree, init_tree)
@@ -155,7 +157,7 @@ class ModelTree(nn.Module):
         :param reference_tree:
         :return:
         """
-        node = ModelNode(self.logistic_k, reference_tree, init_tree)
+        node = ModelNode(self.logistic_k, reference_tree, init_tree, self.gate_size_default)
         child_list = nn.ModuleList()
         if init_tree == None:
             for child in reference_tree.children:

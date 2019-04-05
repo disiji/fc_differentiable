@@ -10,8 +10,6 @@ import torch
 import pickle
 from copy import deepcopy
 from utils import plot as util_plot
-from math import *
-import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
 
@@ -26,7 +24,8 @@ if __name__ == '__main__':
     LOGISTIC_K = 100
     REGULARIZATION_PENALTY = 1.0
     EMPTYNESS_PENALTY = 10
-    GATE_SIZE_PENALTY = 50
+    GATE_SIZE_PENALTY = 0
+    GATE_SIZE_DAFAULT = 1./4
     LOAD_DATA_FROM_PICKLE = False
     DAFI_INIT = False
     if DAFI_INIT:
@@ -35,8 +34,7 @@ if __name__ == '__main__':
         INIT_METHOD = "random_init"
     LOSS_TYPE = 'logistic'  # or MSE
     # LOSS_TYPE = 'MSE'
-    n_epoch = 1000
-    n_epoch_dafi = 0
+    n_epoch = 200
     n_epoch_eval = 20
     # update classifier parameter and boundary parameter alternatively;
     # update boundary parameters after every 4 iterations of updating the classifer parameters
@@ -45,6 +43,7 @@ if __name__ == '__main__':
     learning_rate_gates = 0.5
     # batch_size = 74
     batch_size = 10
+    n_epoch_dafi = n_epoch // n_mini_batch_update_gates * (n_mini_batch_update_gates - 1)
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
     # y: a list of labels; 1 is CLL, 0 is healthy
@@ -145,7 +144,7 @@ if __name__ == '__main__':
     start = time.time()
     dafi_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
                           emptyness_penalty=EMPTYNESS_PENALTY, gate_size_penalty=GATE_SIZE_PENALTY, init_tree=None,
-                          loss_type=LOSS_TYPE)
+                          loss_type=LOSS_TYPE, gate_size_default=GATE_SIZE_DAFAULT)
     dafi_optimizer_classifier = torch.optim.SGD([dafi_tree.linear.weight, dafi_tree.linear.bias],
                                                 lr=learning_rate_classifier)
     for epoch in range(n_epoch_dafi):
@@ -168,7 +167,7 @@ if __name__ == '__main__':
     start = time.time()
     model_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
                            emptyness_penalty=EMPTYNESS_PENALTY, gate_size_penalty=GATE_SIZE_PENALTY,
-                           init_tree=init_tree, loss_type=LOSS_TYPE)
+                           init_tree=init_tree, loss_type=LOSS_TYPE, gate_size_default=GATE_SIZE_DAFAULT)
 
     # Keep track of losses for plotting
     train_loss = []
@@ -282,6 +281,19 @@ if __name__ == '__main__':
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
                 epoch, i, train_acc[-1], eval_acc[-1]))
 
+    ####### compute model_pred_prob
+    model_pred_prob = model_tree(normalized_x, y)['y_pred'].detach().numpy()
+    model_pred = (model_pred_prob > 0.5) * 1.0
+    dafi_pred_prob = dafi_tree(normalized_x, y)['y_pred'].detach().numpy()
+    dafi_pred = (dafi_pred_prob > 0.5) * 1.0
+
+    y_pred_train_dafi = (dafi_tree(x_train, y_train)['y_pred'].detach().numpy() > 0.5) * 1.0
+    y_pred_eval_dafi = (dafi_tree(x_eval, y_eval)['y_pred'].detach().numpy() > 0.5) * 1.0
+    train_acc_dafi = sum(y_pred_train_dafi == y_train.numpy()) * 1.0 / len(x_train)
+    eval_acc_dafi = sum(y_pred_eval_dafi == y_eval.numpy()) * 1.0 / len(x_eval)
+    overall_acc_dafi = sum(
+        (dafi_tree(normalized_x, y)['y_pred'].detach().numpy() > 0.5) * 1.0 == y.numpy()) * 1.0 / len(x)
+
     ##################### write results
     print("Running time for training %d epoch: %.3f seconds" % (n_epoch, time.time() - start))
     print("Optimal acc on train and eval during training process: %.3f at [Epoch %d, batch %d] "
@@ -296,23 +308,21 @@ if __name__ == '__main__':
         eval_accuracy = sum(y_eval_pred == y_eval.numpy()) * 1.0 / len(x_eval)
         overall_accuracy = sum(y_pred == y.numpy()) * 1.0 / len(x)
         file.write(
-            "%d, %.3f, %d, %d, %s, %s, %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f, %.3f, %.3f, %.3f\n" % (
+            "%d, %.3f, %d, %d, %s, %s, %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f, %.3f, %.3f, %.3f,  %.3f, %.3f, %.3f\n" % (
                 LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, GATE_SIZE_PENALTY, INIT_METHOD, LOSS_TYPE,
                 n_epoch, batch_size, n_epoch_eval, n_mini_batch_update_gates,
                 learning_rate_classifier, learning_rate_gates,
                 train_accuracy, eval_accuracy, overall_accuracy,
+                train_acc_dafi, eval_acc_dafi, overall_acc_dafi,
                 train_acc_opt, train_n_iter_opt[0], train_n_iter_opt[1],
                 eval_acc_opt, eval_n_iter_opt[0], eval_n_iter_opt[1],
                 model_tree(x_train, y_train)['log_loss'].detach().numpy(),
                 model_tree(x_eval, y_eval)['log_loss'].detach().numpy(),
                 model_tree(normalized_x, y)['log_loss'].detach().numpy(),
+                dafi_tree(x_train, y_train)['log_loss'].detach().numpy(),
+                dafi_tree(x_eval, y_eval)['log_loss'].detach().numpy(),
+                dafi_tree(normalized_x, y)['log_loss'].detach().numpy(),
                 time.time() - start))
-
-    ####### compute model_pred_prob
-    model_pred_prob = model_tree(normalized_x, y)['y_pred'].detach().numpy()
-    model_pred = (model_pred_prob > 0.5) * 1.0
-    dafi_pred_prob = dafi_tree(normalized_x, y)['y_pred'].detach().numpy()
-    dafi_pred = (dafi_pred_prob > 0.5) * 1.0
 
     ##################### visualization
 
@@ -323,7 +333,8 @@ if __name__ == '__main__':
         LOSS_TYPE)
     util_plot.plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, train_ref_reg_loss,
                            eval_ref_reg_loss, train_size_reg_loss, eval_size_reg_loss,
-                           train_acc, eval_acc, log_decision_boundary, figname_metric)
+                           train_acc, eval_acc, log_decision_boundary, figname_metric, dafi_tree(x_train, y_train),
+                           dafi_tree(x_eval, y_eval), train_acc_dafi, eval_acc_dafi)
 
     ##### plot gates
     figname_root_pos = "../fig/4D_k%d_reg%.1f_emp%d_gatesize%d_nepoch%d_batchsize%d_%s_%s_root_pos.png" % (

@@ -54,7 +54,8 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
 
 
 def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, train_ref_reg_loss, eval_ref_reg_loss,
-                 train_size_reg_loss, eval_size_reg_loss, train_acc, eval_acc, log_decision_boundary, filename):
+                 train_size_reg_loss, eval_size_reg_loss, train_acc, eval_acc, log_decision_boundary, filename,
+                 output_dafi_train=None, output_dafi_eval=None, train_acc_dafi=None, eval_acc_dafi=None):
     """
 
     :param x_range:
@@ -88,27 +89,50 @@ def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, 
     ax_metric[0, 0].plot(x_range, train_loss)
     ax_metric[0, 0].plot(x_range, eval_loss)
     ax_metric[0, 0].set_xlabel("#Epoch")
-    ax_metric[0, 0].legend(["train overall loss", "eval overall loss"], prop={'size': 6})
+    if output_dafi_train == None:
+        ax_metric[0, 0].legend(["train overall loss", "eval overall loss"], prop={'size': 6})
+    else:
+        ax_metric[0, 0].plot(x_range, [output_dafi_train['loss'] for _ in x_range])
+        ax_metric[0, 0].plot(x_range, [output_dafi_eval['loss'] for _ in x_range])
+        ax_metric[0, 0].legend(
+            ["train overall loss", "eval overall loss", "train overall loss-DAfi", "eval overall loss-DAfi"],
+            prop={'size': 6})
 
     ax_metric[0, 1].plot(x_range, train_log_loss)
     ax_metric[0, 1].plot(x_range, eval_log_loss)
     ax_metric[0, 1].set_xlabel("#Epoch")
-    ax_metric[0, 1].legend(["train logL", "eval logL"], prop={'size': 6})
+    if output_dafi_train == None:
+        ax_metric[0, 1].legend(["train logL", "eval logL"], prop={'size': 6})
+    else:
+        ax_metric[0, 1].plot(x_range, [output_dafi_train['log_loss'] for _ in x_range])
+        ax_metric[0, 1].plot(x_range, [output_dafi_eval['log_loss'] for _ in x_range])
+        ax_metric[0, 1].legend(["train logL", "eval logL", "train logL-DAFi", "eval logL-DAFi"], prop={'size': 6})
 
     ax_metric[1, 0].plot(x_range, train_ref_reg_loss)
-    ax_metric[1, 0].plot(x_range, eval_ref_reg_loss)
     ax_metric[1, 0].set_xlabel("#Epoch")
-    ax_metric[1, 0].legend(["train reference reg", "eval reference reg"], prop={'size': 6})
+    if output_dafi_train == None:
+        ax_metric[1, 0].legend(["reference reg"], prop={'size': 6})
+    else:
+        ax_metric[1, 0].plot(x_range, [output_dafi_train['ref_reg_loss'] for _ in x_range])
+        ax_metric[1, 0].legend(["reference reg-model", "reference reg-DAFi"], prop={'size': 6})
 
     ax_metric[1, 1].plot(x_range, train_size_reg_loss)
-    ax_metric[1, 1].plot(x_range, eval_size_reg_loss)
     ax_metric[1, 1].set_xlabel("#Epoch")
-    ax_metric[1, 1].legend(["train gate size reg", "eval gate size reg"], prop={'size': 6})
+    if output_dafi_train == None:
+        ax_metric[1, 1].legend(["gate size reg"], prop={'size': 6})
+    else:
+        ax_metric[1, 1].plot(x_range, [output_dafi_train['size_reg_loss'] for _ in x_range])
+        ax_metric[1, 1].legend(["gate size reg-model", "gate size reg-DAFi"],prop={'size': 6})
 
     ax_metric[2, 0].plot(x_range, train_acc)
     ax_metric[2, 0].plot(x_range, eval_acc)
     ax_metric[2, 0].set_xlabel("#Epoch")
-    ax_metric[2, 0].legend(["train acc", "eval acc"], prop={'size': 6})
+    if output_dafi_train == None:
+        ax_metric[2, 0].legend(["train acc", "eval acc"], prop={'size': 6})
+    else:
+        ax_metric[2, 0].plot(x_range, [train_acc_dafi for _ in x_range])
+        ax_metric[2, 0].plot(x_range, [train_acc_dafi for _ in x_range])
+        ax_metric[2, 0].legend(["train acc", "eval acc", "train acc-DAFi", "eval acc-DAFi"], prop={'size': 6})
 
     ax_metric[2, 1].plot(x_range, log_decision_boundary)
     ax_metric[2, 1].set_xlabel("#Epoch")
