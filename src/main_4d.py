@@ -22,27 +22,30 @@ if __name__ == '__main__':
     FEATURES_FULL = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
     FEATURE2ID = dict((FEATURES[i], i) for i in range(len(FEATURES)))
     LOGISTIC_K = 100
-    REGULARIZATION_PENALTY = 1.0
-    EMPTYNESS_PENALTY = 10
+    LOGISTIC_K_DAFI = 1000
+    REGULARIZATION_PENALTY = 0
+    EMPTYNESS_PENALTY = 20
     GATE_SIZE_PENALTY = 0
     GATE_SIZE_DAFAULT = 1./4
-    LOAD_DATA_FROM_PICKLE = False
+    LOAD_DATA_FROM_PICKLE = True
     DAFI_INIT = False
+    OPTIMIZER = "SGD"
+    # OPTIMIZER = "Adam"
     if DAFI_INIT:
         INIT_METHOD = "dafi_init"
     else:
         INIT_METHOD = "random_init"
     LOSS_TYPE = 'logistic'  # or MSE
-    # LOSS_TYPE = 'MSE'
-    n_epoch = 200
+    # LOSS_TYPE = 'MSE"
     n_epoch_eval = 20
     # update classifier parameter and boundary parameter alternatively;
     # update boundary parameters after every 4 iterations of updating the classifer parameters
     n_mini_batch_update_gates = 50
-    learning_rate_classifier = 0.05
+    learning_rate_classifier = 0.01
     learning_rate_gates = 0.5
     # batch_size = 74
     batch_size = 10
+    n_epoch = 1000
     n_epoch_dafi = n_epoch // n_mini_batch_update_gates * (n_mini_batch_update_gates - 1)
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
@@ -140,28 +143,6 @@ if __name__ == '__main__':
     #         sum((y_pred_train == y_train.numpy())) * 1.0 / len(x_train),
     #         sum((y_pred_eval == y_eval.numpy())) * 1.0 / len(x_eval)))
 
-    ########### train a classifier on the top of DAFi features
-    start = time.time()
-    dafi_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K, regularisation_penalty=REGULARIZATION_PENALTY,
-                          emptyness_penalty=EMPTYNESS_PENALTY, gate_size_penalty=GATE_SIZE_PENALTY, init_tree=None,
-                          loss_type=LOSS_TYPE, gate_size_default=GATE_SIZE_DAFAULT)
-    dafi_optimizer_classifier = torch.optim.SGD([dafi_tree.linear.weight, dafi_tree.linear.bias],
-                                                lr=learning_rate_classifier)
-    for epoch in range(n_epoch_dafi):
-        idx_shuffle = np.array([i for i in range(len(x_train))])
-        shuffle(idx_shuffle)
-        x_train = [x_train[_] for _ in idx_shuffle]
-        y_train = y_train[idx_shuffle]
-        for i in range(n_mini_batch):
-            idx_batch = [j for j in range(batch_size * i, batch_size * (i + 1))]
-            x_batch = [x_train[j] for j in idx_batch]
-            y_batch = y_train[idx_batch]
-            dafi_optimizer_classifier.zero_grad()
-            output = dafi_tree(x_batch, y_batch)
-            loss = output['loss']
-            loss.backward()
-            dafi_optimizer_classifier.step()
-    print("Running time for training classifier with DAFi gates: %.3f seconds." % (time.time() - start))
 
     # train differentiable gates model
     start = time.time()
@@ -201,8 +182,12 @@ if __name__ == '__main__':
     # optimizer
     classifier_params = [model_tree.linear.weight, model_tree.linear.bias]
     gates_params = [p for p in model_tree.parameters() if p not in classifier_params]
-    optimizer_classifier = torch.optim.SGD(classifier_params, lr=learning_rate_classifier)
-    optimizer_gates = torch.optim.SGD(gates_params, lr=learning_rate_gates)
+    if OPTIMIZER == "SGD":
+        optimizer_classifier = torch.optim.SGD(classifier_params, lr=learning_rate_classifier)
+        optimizer_gates = torch.optim.SGD(gates_params, lr=learning_rate_gates)
+    else:
+        optimizer_classifier = torch.optim.Adam(classifier_params, lr=learning_rate_classifier)
+        optimizer_gates = torch.optim.Adam(gates_params, lr=learning_rate_gates)
 
     for epoch in range(n_epoch):
         # shuffle training data
@@ -281,6 +266,35 @@ if __name__ == '__main__':
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
                 epoch, i, train_acc[-1], eval_acc[-1]))
 
+
+    ########### train a classifier on the top of DAFi features
+    start = time.time()
+    dafi_tree = ModelTree(reference_tree, logistic_k=LOGISTIC_K_DAFI, regularisation_penalty=REGULARIZATION_PENALTY,
+                          emptyness_penalty=EMPTYNESS_PENALTY, gate_size_penalty=GATE_SIZE_PENALTY, init_tree=None,
+                          loss_type=LOSS_TYPE, gate_size_default=GATE_SIZE_DAFAULT)
+    if OPTIMIZER == "SGD":
+        dafi_optimizer_classifier = torch.optim.SGD([dafi_tree.linear.weight, dafi_tree.linear.bias],
+                                                lr=learning_rate_classifier)
+    else:
+        dafi_optimizer_classifier = torch.optim.Adam([dafi_tree.linear.weight, dafi_tree.linear.bias],
+                                                lr=learning_rate_classifier)
+
+    for epoch in range(n_epoch_dafi):
+        idx_shuffle = np.array([i for i in range(len(x_train))])
+        shuffle(idx_shuffle)
+        x_train = [x_train[_] for _ in idx_shuffle]
+        y_train = y_train[idx_shuffle]
+        for i in range(n_mini_batch):
+            idx_batch = [j for j in range(batch_size * i, batch_size * (i + 1))]
+            x_batch = [x_train[j] for j in idx_batch]
+            y_batch = y_train[idx_batch]
+            dafi_optimizer_classifier.zero_grad()
+            output = dafi_tree(x_batch, y_batch)
+            loss = output['loss']
+            loss.backward()
+            dafi_optimizer_classifier.step()
+    print("Running time for training classifier with DAFi gates: %.3f seconds." % (time.time() - start))
+
     ####### compute model_pred_prob
     model_pred_prob = model_tree(normalized_x, y)['y_pred'].detach().numpy()
     model_pred = (model_pred_prob > 0.5) * 1.0
@@ -308,8 +322,8 @@ if __name__ == '__main__':
         eval_accuracy = sum(y_eval_pred == y_eval.numpy()) * 1.0 / len(x_eval)
         overall_accuracy = sum(y_pred == y.numpy()) * 1.0 / len(x)
         file.write(
-            "%d, %.3f, %d, %d, %s, %s, %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f, %.3f, %.3f, %.3f,  %.3f, %.3f, %.3f\n" % (
-                LOGISTIC_K, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, GATE_SIZE_PENALTY, INIT_METHOD, LOSS_TYPE,
+            "%d, %d, %.3f, %d, %d, %s, %s, %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f, %.3f, %.3f, %.3f,  %.3f, %.3f, %.3f\n" % (
+                LOGISTIC_K, LOGISTIC_K_DAFI, REGULARIZATION_PENALTY, EMPTYNESS_PENALTY, GATE_SIZE_PENALTY, INIT_METHOD, LOSS_TYPE,
                 n_epoch, batch_size, n_epoch_eval, n_mini_batch_update_gates,
                 learning_rate_classifier, learning_rate_gates,
                 train_accuracy, eval_accuracy, overall_accuracy,
