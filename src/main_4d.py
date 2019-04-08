@@ -1,37 +1,41 @@
+import csv
+import os
+import pickle
+import sys
+import time
+from copy import deepcopy
 from random import shuffle
+
+import numpy as np
+import torch
+import utils.load_data as dh
+import yaml
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
-import numpy as np
-from utils.bayes_gate_pytorch_sigmoid_trans import ModelTree, ReferenceTree
-import utils.load_data as dh
 from sklearn.model_selection import train_test_split
-import time
-import torch
-import pickle
-from copy import deepcopy
 from utils import plot as util_plot
-import os
-
+from utils.bayes_gate_pytorch_sigmoid_trans import ModelTree, ReferenceTree
 
 default_hparams = {
-        'logistic_k': 100,
-        'logistic_k_dafi' : 1000,
-        'regularization_penalty' : 0,
-        'emptyness_penalty' : 10,
-        'gate_size_penalty' : 1,
-        'gate_size_default' : 1. / 4,
-        'load_from_pickle' : True,
-        'dafi_init' : False,
-        'optimizer' : "SGD", # or Adam
-        'loss_type' : 'logistic',  # or MSE
-        'n_epoch_eval' : 20,
-        'n_mini_batch_update_gates' : 50,
-        'learning_rate_classifier' : 0.02,
-        'learning_rate_gates' : 0.5,
-        'batch_size': 10,
-        'n_epoch' : 200,
-        'test_size' : 0.20,
-        'experiment_name': 'default'
+    'logistic_k': 100,
+    'logistic_k_dafi': 1000,
+    'regularization_penalty': 0,
+    'emptyness_penalty': 10,
+    'gate_size_penalty': 1,
+    'gate_size_default': 1. / 4,
+    'load_from_pickle': True,
+    'dafi_init': False,
+    'optimizer': "SGD",  # or Adam
+    'loss_type': 'logistic',  # or MSE
+    'n_epoch_eval': 20,
+    'n_mini_batch_update_gates': 50,
+    'learning_rate_classifier': 0.02,
+    'learning_rate_gates': 0.5,
+    'batch_size': 10,
+    'n_epoch': 200,
+    'test_size': 0.20,
+    'experiment_name': 'default',
+    'random_state': 123
 }
 
 
@@ -277,10 +281,12 @@ def run_output(model_tree, dafi_tree, hparams, input, train_tracker, eval_tracke
 
     with open('../output/%s/results_cll_4D.csv' % hparams['experiment_name'], "a+") as file:
         file.write(
-            "%d, %d, %.3f, %d, %d, %s, %s, %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f, %.3f, %.3f, %.3f,  %.3f, %.3f, %.3f\n" % (
-                hparams['logistic_k'], hparams['logistic_k_dafi'], hparams['regularization_penalty'], hparams['emptyness_penalty'],
-                hparams['gate_size_penalty'], hparams['init_method'], hparams['loss_type'],
-                hparams['n_epoch'], hparams['batch_size'], hparams['n_epoch_eval'], hparams['n_mini_batch_update_gates'],
+            "%d, %d, %d, %.3f, %d, %d, %s, %s, %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f, %.3f, %.3f, %.3f,  %.3f, %.3f, %.3f\n" % (
+                hparams['logistic_k'], hparams['logistic_k_dafi'], hparams['random_state'],
+                hparams['regularization_penalty'], hparams['emptyness_penalty'], hparams['gate_size_penalty'],
+                hparams['init_method'], hparams['loss_type'],
+                hparams['n_epoch'], hparams['batch_size'], hparams['n_epoch_eval'],
+                hparams['n_mini_batch_update_gates'],
                 hparams['learning_rate_classifier'], hparams['learning_rate_gates'],
                 train_accuracy, eval_accuracy, overall_accuracy,
                 train_accuracy_dafi, eval_accuracy_dafi, overall_accuracy_dafi,
@@ -314,7 +320,6 @@ def run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, input, trai
 
 
 def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, input, config_str):
-
     filename_root_pas = "../output/%s/4D_%s_root_pos.png" % (hparams['experiment_name'], config_str)
     filename_root_neg = "../output/%s/4D_%s_root_neg.png" % (hparams['experiment_name'], config_str)
     filename_leaf_pas = "../output/%s/4D_%s_leaf_pos.png" % (hparams['experiment_name'], config_str)
@@ -333,27 +338,38 @@ def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, 
                        filename_root_pas, filename_root_neg, filename_leaf_pas, filename_leaf_neg)
 
 
-def main():
-
-    
+def run(yaml_filename):
     hparams = default_hparams
     print(hparams)
+
+    with open(yaml_filename, "r") as f_in:
+        yaml_params = yaml.safe_load(f_in)
+    hparams.update(yaml_params)
+
+    print(hparams)
+
     if hparams['dafi_init']:
         hparams['init_method'] = "dafi_init"
     else:
         hparams['init_method'] = "random_init"
-    hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (hparams['n_mini_batch_update_gates'] - 1)
+    hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
+            hparams['n_mini_batch_update_gates'] - 1)
 
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
+    w = csv.writer(open('../output/%s/hparams.csv' % hparams['experiment_name'], "w"))
+    for key, val in hparams.items():
+        w.writerow([key, val])
 
     config_str = "k%d_reg%.1f_emp%d_gatesize%d_nepoch%d_batchsize%d_%s_%s" % (
-            hparams['logistic_k'], hparams['regularization_penalty'], hparams['emptyness_penalty'], hparams['gate_size_penalty'],
-            hparams['n_epoch'], hparams['batch_size'], hparams['init_method'],hparams['loss_type'])
+        hparams['logistic_k'], hparams['regularization_penalty'], hparams['emptyness_penalty'],
+        hparams['gate_size_penalty'],
+        hparams['n_epoch'], hparams['batch_size'], hparams['init_method'], hparams['loss_type'])
 
     cll_4d_input = Cll4dInput(hparams)
 
     for random_state in range(3):
+        hparams['random_state'] = random_state
         cll_4d_input.split(random_state)
 
         model_tree = ModelTree(cll_4d_input.reference_tree,
@@ -387,4 +403,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    #run(sys.argv[1])
+    run("../configs/test.yaml")
