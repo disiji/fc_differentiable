@@ -53,41 +53,13 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
     return ax
 
 
-def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, train_ref_reg_loss, eval_ref_reg_loss,
-                 train_size_reg_loss, eval_size_reg_loss, train_acc, eval_acc, log_decision_boundary, filename,
+def plot_metrics(x_range, train_tracker, eval_tracker, filename,
                  output_dafi_train=None, output_dafi_eval=None, train_acc_dafi=None, eval_acc_dafi=None):
-    """
 
-    :param x_range:
-    :param train_loss:
-    :param eval_loss:
-    :param train_log_loss:
-    :param eval_log_loss:
-    :param train_reg_loss:
-    :param eval_reg_loss:
-    :param train_acc:
-    :param eval_acc:
-    :param log_decision_boundary:
-    :param filename:
-    :return:
-    """
     fig_metric, ax_metric = plt.subplots(nrows=3, ncols=2, figsize=(2 * 3, 3 * 2))
 
-    print("x range:", x_range)
-    print("train_loss:", train_loss)
-    print("eval_loss:", eval_loss)
-    print("train_log_loss:", train_log_loss)
-    print("eval_log_loss:", eval_log_loss)
-    print("train_ref_reg_loss:", train_ref_reg_loss)
-    print("eval_ref_reg_loss:", eval_ref_reg_loss)
-    print("train_size_reg_loss:", train_size_reg_loss)
-    print("eval_size_reg_loss:", eval_size_reg_loss)
-    print("train_acc:", train_acc)
-    print("eval_acc:", eval_acc)
-    print("log_decision_boundary:", log_decision_boundary)
-
-    ax_metric[0, 0].plot(x_range, train_loss)
-    ax_metric[0, 0].plot(x_range, eval_loss)
+    ax_metric[0, 0].plot(x_range, train_tracker.loss)
+    ax_metric[0, 0].plot(x_range, eval_tracker.loss)
     ax_metric[0, 0].set_xlabel("#Epoch")
     if output_dafi_train == None:
         ax_metric[0, 0].legend(["train overall loss", "eval overall loss"], prop={'size': 6})
@@ -98,8 +70,8 @@ def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, 
             ["train overall loss", "eval overall loss", "train overall loss-DAfi", "eval overall loss-DAfi"],
             prop={'size': 6})
 
-    ax_metric[0, 1].plot(x_range, train_log_loss)
-    ax_metric[0, 1].plot(x_range, eval_log_loss)
+    ax_metric[0, 1].plot(x_range, train_tracker.log_loss)
+    ax_metric[0, 1].plot(x_range, eval_tracker.log_loss)
     ax_metric[0, 1].set_xlabel("#Epoch")
     if output_dafi_train == None:
         ax_metric[0, 1].legend(["train logL", "eval logL"], prop={'size': 6})
@@ -108,7 +80,7 @@ def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, 
         ax_metric[0, 1].plot(x_range, [output_dafi_eval['log_loss'] for _ in x_range])
         ax_metric[0, 1].legend(["train logL", "eval logL", "train logL-DAFi", "eval logL-DAFi"], prop={'size': 6})
 
-    ax_metric[1, 0].plot(x_range, train_ref_reg_loss)
+    ax_metric[1, 0].plot(x_range, train_tracker.ref_reg_loss)
     ax_metric[1, 0].set_xlabel("#Epoch")
     if output_dafi_train == None:
         ax_metric[1, 0].legend(["reference reg"], prop={'size': 6})
@@ -116,7 +88,7 @@ def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, 
         ax_metric[1, 0].plot(x_range, [output_dafi_train['ref_reg_loss'] for _ in x_range])
         ax_metric[1, 0].legend(["reference reg-model", "reference reg-DAFi"], prop={'size': 6})
 
-    ax_metric[1, 1].plot(x_range, train_size_reg_loss)
+    ax_metric[1, 1].plot(x_range, train_tracker.size_reg_loss)
     ax_metric[1, 1].set_xlabel("#Epoch")
     if output_dafi_train == None:
         ax_metric[1, 1].legend(["gate size reg"], prop={'size': 6})
@@ -124,8 +96,8 @@ def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, 
         ax_metric[1, 1].plot(x_range, [output_dafi_train['size_reg_loss'] for _ in x_range])
         ax_metric[1, 1].legend(["gate size reg-model", "gate size reg-DAFi"],prop={'size': 6})
 
-    ax_metric[2, 0].plot(x_range, train_acc)
-    ax_metric[2, 0].plot(x_range, eval_acc)
+    ax_metric[2, 0].plot(x_range, train_tracker.acc)
+    ax_metric[2, 0].plot(x_range, eval_tracker.acc)
     ax_metric[2, 0].set_xlabel("#Epoch")
     if output_dafi_train == None:
         ax_metric[2, 0].legend(["train acc", "eval acc"], prop={'size': 6})
@@ -134,7 +106,7 @@ def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, 
         ax_metric[2, 0].plot(x_range, [train_acc_dafi for _ in x_range])
         ax_metric[2, 0].legend(["train acc", "eval acc", "train acc-DAFi", "eval acc-DAFi"], prop={'size': 6})
 
-    ax_metric[2, 1].plot(x_range, log_decision_boundary)
+    ax_metric[2, 1].plot(x_range, train_tracker.log_decision_boundary)
     ax_metric[2, 1].set_xlabel("#Epoch")
     ax_metric[2, 1].legend(["log decision boundary"], prop={'size': 6})
 
@@ -143,34 +115,9 @@ def plot_metrics(x_range, train_loss, eval_loss, train_log_loss, eval_log_loss, 
 
 
 def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, reference_tree,
-             train_root_gate_opt, eval_root_gate_opt, root_gate_init,
-             train_leaf_gate_opt, eval_leaf_gate_opt, leaf_gate_init,
+             train_tracker, eval_tracker,
              model_pred, model_pred_prob, dafi_pred, dafi_pred_prob,
              figname_root_pos, figname_root_neg, figname_leaf_pos, figname_leaf_neg):
-    """
-
-    :param normalized_x:
-    :param filtered_normalized_x:
-    :param y:
-    :param FEATURES:
-    :param model_tree:
-    :param reference_tree:
-    :param train_root_gate_opt:
-    :param eval_root_gate_opt:
-    :param root_gate_init:
-    :param train_leaf_gate_opt:
-    :param eval_leaf_gate_opt:
-    :param leaf_gate_init:
-    :param model_pred:
-    :param model_pred_prob:
-    :param dafi_pred:
-    :param dafi_pred_prob:
-    :param figname_root_pos:
-    :param figname_root_neg:
-    :param figname_leaf_pos:
-    :param figname_leaf_neg:
-    :return:
-    """
 
     fig_root_pos, ax_root_pos = plt.subplots(nrows=ceil(sum(y) / 5), ncols=5, figsize=(5 * 5, ceil(sum(y) / 5) * 3))
     fig_leaf_pos, ax_leaf_pos = plt.subplots(nrows=ceil(sum(y) / 5), ncols=5, figsize=(5 * 5, ceil(sum(y) / 5) * 3))
@@ -187,7 +134,7 @@ def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, refer
         if y[sample_idx] == 1:
             ax_root_pos[idx_pos // 5, idx_pos % 5] = \
                 plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
-                           [train_root_gate_opt, eval_root_gate_opt, root_gate_init,
+                           [train_tracker.root_gate_opt, eval_tracker.root_gate_opt, train_tracker.root_gate_init,
                             reference_tree.gate, model_tree.root],
                            ["opt on train", "opt on eval", "init",
                             "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
@@ -196,9 +143,9 @@ def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, refer
             ax_leaf_pos[idx_pos // 5, idx_pos % 5] = \
                 plot_gates(filtered_normalized_x[sample_idx][:, 2],
                            filtered_normalized_x[sample_idx][:, 3],
-                           [train_leaf_gate_opt,
-                            eval_leaf_gate_opt,
-                            leaf_gate_init, reference_tree.children[0].gate,
+                           [train_tracker.leaf_gate_opt,
+                            eval_tracker.leaf_gate_opt,
+                            train_tracker.leaf_gate_init, reference_tree.children[0].gate,
                             model_tree.children_dict[str(id(model_tree.root))][0]],
                            ["opt on train", "opt on eval", "init",
                             "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
@@ -214,7 +161,7 @@ def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, refer
         else:
             ax_root_neg[idx_neg // 5, idx_neg % 5] = \
                 plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
-                           [train_root_gate_opt, eval_root_gate_opt, root_gate_init,
+                           [train_tracker.root_gate_opt, eval_tracker.root_gate_opt, train_tracker.root_gate_init,
                             reference_tree.gate, model_tree.root],
                            ["opt on train", "opt on eval", "init",
                             "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
@@ -223,9 +170,9 @@ def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, refer
             ax_leaf_neg[idx_neg // 5, idx_neg % 5] = \
                 plot_gates(filtered_normalized_x[sample_idx][:, 2],
                            filtered_normalized_x[sample_idx][:, 3],
-                           [train_leaf_gate_opt,
-                            eval_leaf_gate_opt,
-                            leaf_gate_init, reference_tree.children[0].gate,
+                           [train_tracker.leaf_gate_opt,
+                            eval_tracker.leaf_gate_opt,
+                            train_tracker.leaf_gate_init, reference_tree.children[0].gate,
                             model_tree.children_dict[str(id(model_tree.root))][0]],
                            ["opt on train", "opt on eval", "init",
                             "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
