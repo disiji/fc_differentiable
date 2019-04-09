@@ -1,5 +1,6 @@
 import csv
 import os
+import sys
 import pickle
 import time
 from copy import deepcopy
@@ -383,7 +384,7 @@ def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, 
                        filename_root_pas, filename_root_neg, filename_leaf_pas, filename_leaf_neg)
 
 
-def run(yaml_filename):
+def run(yaml_filename, random_state_start=0):
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
@@ -401,7 +402,7 @@ def run(yaml_filename):
 
     cll_4d_input = Cll4dInput(hparams)
 
-    for random_state in range(hparams['n_run']):
+    for random_state in range(random_state_start, hparams['n_run']):
         hparams['random_state'] = random_state
         cll_4d_input.split(random_state)
 
@@ -428,12 +429,12 @@ def run(yaml_filename):
         output_metric_dict = run_output(
             model_tree, dafi_tree, hparams, cll_4d_input, train_tracker, eval_tracker, run_time)
 
-    # only plot once
-    run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
-    run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
-    print("end")
+        # only plot once
+        if not os.path.isfile('../output/%s/metrics.png' % hparams['experiment_name']):
+            run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
+            run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
 
 
 if __name__ == '__main__':
-    # run(sys.argv[1])
-    run("../configs/gate_size_regularization_off.yaml")
+    run(sys.argv[1], sys.argv[2])
+    #run("../configs/gate_size_regularization_off.yaml")
