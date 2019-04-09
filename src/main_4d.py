@@ -34,7 +34,7 @@ default_hparams = {
     'learning_rate_classifier': 0.01,
     'learning_rate_gates': 0.5,
     'batch_size': 85,
-    'n_epoch': 200,
+    'n_epoch': 1000,
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
@@ -394,9 +394,10 @@ def run(yaml_filename):
 
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
-    w = csv.writer(open('../output/%s/hparams.csv' % hparams['experiment_name'], "w"))
-    for key, val in hparams.items():
-        w.writerow([key, val])
+    with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
+        writer = csv.writer(outfile)
+        for key, val in hparams.items():
+            writer.writerow([key, val])
 
     cll_4d_input = Cll4dInput(hparams)
 
@@ -435,4 +436,4 @@ def run(yaml_filename):
 
 if __name__ == '__main__':
     # run(sys.argv[1])
-    run("../configs/test.yaml")
+    run("../configs/gate_size_regularization_off.yaml")
