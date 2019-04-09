@@ -1,18 +1,20 @@
 import csv
 import os
 import pickle
-import sys
 import time
 from copy import deepcopy
 from random import shuffle
 
 import numpy as np
 import torch
-import utils.load_data as dh
 import yaml
+from sklearn.metrics import brier_score_loss
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
+from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
+
+import utils.load_data as dh
 from utils import plot as util_plot
 from utils.bayes_gate_pytorch_sigmoid_trans import ModelTree, ReferenceTree
 
@@ -29,13 +31,14 @@ default_hparams = {
     'loss_type': 'logistic',  # or MSE
     'n_epoch_eval': 20,
     'n_mini_batch_update_gates': 50,
-    'learning_rate_classifier': 0.02,
+    'learning_rate_classifier': 0.01,
     'learning_rate_gates': 0.5,
-    'batch_size': 10,
+    'batch_size': 85,
     'n_epoch': 200,
     'test_size': 0.20,
     'experiment_name': 'default',
-    'random_state': 123
+    'random_state': 123,
+    'n_run': 100,
 }
 
 
@@ -66,6 +69,7 @@ class Cll4dInput:
         self._normalize_()
         self._construct_()
         self.split()
+
         self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
 
@@ -146,6 +150,8 @@ class Tracker():
         self.acc = []
         self.precision = []
         self.recall = []
+        self.roc_auc_score = []
+        self.brier_score_loss = []
         self.log_decision_boundary = []
         self.root_gate_opt = None
         self.leaf_gate_opt = None
@@ -163,6 +169,8 @@ class Tracker():
         self.acc.append(sum(y_pred == y_true.numpy()) * 1.0 / y_true.shape[0])
         self.precision.append(precision_score(y_true.numpy(), y_pred, average='macro'))
         self.recall.append(recall_score(y_true.numpy(), y_pred, average='macro'))
+        self.roc_auc_score.append(roc_auc_score(y_true.numpy(), y_pred, average='macro'))
+        self.brier_score_loss.append(brier_score_loss(y_true.numpy(), y_pred))
         self.log_decision_boundary.append(
             (-model_tree.linear.bias.detach() / model_tree.linear.weight.detach()))
         # keep track of optimal gates for train and eval set
@@ -174,7 +182,13 @@ class Tracker():
 
 
 def run_train_dafi(dafi_tree, hparams, input):
-    ########### train a classifier on the top of DAFi features
+    """
+    train a classifier on the top of DAFi features
+    :param dafi_tree:
+    :param hparams:
+    :param input:
+    :return:
+    """
     start = time.time()
     if hparams['optimizer'] == "SGD":
         dafi_optimizer_classifier = torch.optim.SGD([dafi_tree.linear.weight, dafi_tree.linear.bias],
@@ -202,6 +216,13 @@ def run_train_dafi(dafi_tree, hparams, input):
 
 
 def run_train_model(model_tree, hparams, input):
+    """
+
+    :param model_tree:
+    :param hparams:
+    :param input:
+    :return:
+    """
     start = time.time()
     classifier_params = [model_tree.linear.weight, model_tree.linear.bias]
     gates_params = [p for p in model_tree.parameters() if p not in classifier_params]
@@ -265,12 +286,18 @@ def run_train_model(model_tree, hparams, input):
 
 
 def run_output(model_tree, dafi_tree, hparams, input, train_tracker, eval_tracker, run_time):
-    y_train_pred = (model_tree(input.x_train, input.y_train)['y_pred'].detach().numpy() > 0.5) * 1.0
-    y_eval_pred = (model_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy() > 0.5) * 1.0
+    y_pred_train = (model_tree(input.x_train, input.y_train)['y_pred'].detach().numpy() > 0.5) * 1.0
+    y_pred_eval = (model_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy() > 0.5) * 1.0
     y_pred = (model_tree(input.x, input.y)['y_pred'].detach().numpy() > 0.5) * 1.0
-    train_accuracy = sum(y_train_pred == input.y_train.numpy()) * 1.0 / len(input.x_train)
-    eval_accuracy = sum(y_eval_pred == input.y_eval.numpy()) * 1.0 / len(input.x_eval)
+    train_accuracy = sum(y_pred_train == input.y_train.numpy()) * 1.0 / len(input.x_train)
+    eval_accuracy = sum(y_pred_eval == input.y_eval.numpy()) * 1.0 / len(input.x_eval)
     overall_accuracy = sum(y_pred == input.y.numpy()) * 1.0 / len(input.x)
+    train_auc = roc_auc_score(input.y_train.numpy(), y_pred_train, average='macro')
+    eval_auc = roc_auc_score(input.y_eval.numpy(), y_pred_eval, average='macro')
+    overall_auc = roc_auc_score(input.y.numpy(), y_pred, average='macro')
+    train_brier_score = brier_score_loss(input.y_train.numpy(), y_pred_train)
+    eval_brier_score = brier_score_loss(input.y_eval.numpy(), y_pred_eval)
+    overall_brier_score = brier_score_loss(input.y.numpy(), y_pred)
 
     y_pred_train_dafi = (dafi_tree(input.x_train, input.y_train)['y_pred'].detach().numpy() > 0.5) * 1.0
     y_pred_eval_dafi = (dafi_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy() > 0.5) * 1.0
@@ -278,16 +305,17 @@ def run_output(model_tree, dafi_tree, hparams, input, train_tracker, eval_tracke
     train_accuracy_dafi = sum(y_pred_train_dafi == input.y_train.numpy()) * 1.0 / len(input.x_train)
     eval_accuracy_dafi = sum(y_pred_eval_dafi == input.y_eval.numpy()) * 1.0 / len(input.x_eval)
     overall_accuracy_dafi = sum(y_pred_dafi == input.y.numpy()) * 1.0 / len(input.x)
+    train_auc_dafi = roc_auc_score(input.y_train.numpy(), y_pred_train_dafi, average='macro')
+    eval_auc_dafi = roc_auc_score(input.y_eval.numpy(), y_pred_eval_dafi, average='macro')
+    overall_auc_dafi = roc_auc_score(input.y.numpy(), y_pred_dafi, average='macro')
+    train_brier_score_dafi = brier_score_loss(input.y_train.numpy(), y_pred_train_dafi)
+    eval_brier_score_dafi = brier_score_loss(input.y_eval.numpy(), y_pred_eval_dafi)
+    overall_brier_score_dafi = brier_score_loss(input.y.numpy(), y_pred_dafi)
 
     with open('../output/%s/results_cll_4D.csv' % hparams['experiment_name'], "a+") as file:
         file.write(
-            "%d, %d, %d, %.3f, %d, %d, %s, %s, %d, %d, %d, %d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f, %.3f, %.3f, %.3f,  %.3f, %.3f, %.3f\n" % (
-                hparams['logistic_k'], hparams['logistic_k_dafi'], hparams['random_state'],
-                hparams['regularization_penalty'], hparams['emptyness_penalty'], hparams['gate_size_penalty'],
-                hparams['init_method'], hparams['loss_type'],
-                hparams['n_epoch'], hparams['batch_size'], hparams['n_epoch_eval'],
-                hparams['n_mini_batch_update_gates'],
-                hparams['learning_rate_classifier'], hparams['learning_rate_gates'],
+            "%d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f([%d; %d]), %.3f([%d; %d]), %.3f, %.3f, %.3f, %.3f,  %.3f, %.3f, %.3f, %.3f, %.3f, %.3f,  %.3f, %.3f, %.3f, %.3f, %.3f, %.3f,  %.3f, %.3f, %.3f\n" % (
+                hparams['random_state'],
                 train_accuracy, eval_accuracy, overall_accuracy,
                 train_accuracy_dafi, eval_accuracy_dafi, overall_accuracy_dafi,
                 train_tracker.acc_opt, train_tracker.n_iter_opt[0], train_tracker.n_iter_opt[1],
@@ -297,7 +325,11 @@ def run_output(model_tree, dafi_tree, hparams, input, train_tracker, eval_tracke
                 model_tree(input.x, input.y)['log_loss'].detach().numpy(),
                 dafi_tree(input.x_train, input.y_train)['log_loss'].detach().numpy(),
                 dafi_tree(input.x_eval, input.y_eval)['log_loss'].detach().numpy(),
-                dafi_tree(input.x, input.y)['log_loss'].detach().numpy(), run_time
+                dafi_tree(input.x, input.y)['log_loss'].detach().numpy(),
+                train_auc, eval_auc, overall_auc, train_auc_dafi, eval_auc_dafi, overall_auc_dafi,
+                train_brier_score, eval_brier_score, overall_brier_score,
+                train_brier_score_dafi, eval_brier_score_dafi, overall_brier_score_dafi,
+                run_time
             ))
 
     return {
@@ -306,24 +338,37 @@ def run_output(model_tree, dafi_tree, hparams, input, train_tracker, eval_tracke
         "overall_accuracy": overall_accuracy,
         "train_accuracy_dafi": train_accuracy_dafi,
         "eval_accuracy_dafi": eval_accuracy_dafi,
-        "overall_accuracy_dafi": overall_accuracy_dafi
+        "overall_accuracy_dafi": overall_accuracy_dafi,
+        "train_auc": train_auc,
+        "eval_auc": eval_auc,
+        "overall_auc": overall_auc,
+        "train_auc_dafi": train_auc_dafi,
+        "eval_auc_dafi": eval_auc_dafi,
+        "overall_auc_dafi": overall_auc_dafi,
+        "train_brier_score": train_brier_score,
+        "eval_brier_score": eval_brier_score,
+        "overall_brier_score": overall_brier_score,
+        "train_brier_score_dafi": train_brier_score_dafi,
+        "eval_brier_score_dafi": eval_brier_score_dafi,
+        "overall_brier_score_dafi": overall_brier_score_dafi,
+
     }
 
 
-def run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, input, train_acc_dafi, eval_acc_dafi, config_str):
+def run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, input, output_metric_dict):
     x_range = [i * hparams['n_epoch_eval'] for i in range(hparams['n_epoch'] // hparams['n_epoch_eval'])]
-    filename_metric = "../output/%s/4D_%s_metrics.png" % (hparams['experiment_name'], config_str)
+    filename_metric = "../output/%s/metrics.png" % (hparams['experiment_name'])
     util_plot.plot_metrics(x_range, train_tracker, eval_tracker, filename_metric,
                            dafi_tree(input.x_train, input.y_train),
                            dafi_tree(input.x_eval, input.y_eval),
-                           train_acc_dafi, eval_acc_dafi)
+                           output_metric_dict)
 
 
-def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, input, config_str):
-    filename_root_pas = "../output/%s/4D_%s_root_pos.png" % (hparams['experiment_name'], config_str)
-    filename_root_neg = "../output/%s/4D_%s_root_neg.png" % (hparams['experiment_name'], config_str)
-    filename_leaf_pas = "../output/%s/4D_%s_leaf_pos.png" % (hparams['experiment_name'], config_str)
-    filename_leaf_neg = "../output/%s/4D_%s_leaf_neg.png" % (hparams['experiment_name'], config_str)
+def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, input):
+    filename_root_pas = "../output/%s/root_pos.png" % (hparams['experiment_name'])
+    filename_root_neg = "../output/%s/root_neg.png" % (hparams['experiment_name'])
+    filename_leaf_pas = "../output/%s/leaf_pos.png" % (hparams['experiment_name'])
+    filename_leaf_neg = "../output/%s/leaf_neg.png" % (hparams['experiment_name'])
 
     ####### compute model_pred_prob
     model_pred_prob = model_tree(input.x, input.y)['y_pred'].detach().numpy()
@@ -340,18 +385,10 @@ def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, 
 
 def run(yaml_filename):
     hparams = default_hparams
-    print(hparams)
-
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
-
-    print(hparams)
-
-    if hparams['dafi_init']:
-        hparams['init_method'] = "dafi_init"
-    else:
-        hparams['init_method'] = "random_init"
+    hparams['init_method'] = "dafi_init" if hparams['dafi_init'] else "random_init"
     hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
             hparams['n_mini_batch_update_gates'] - 1)
 
@@ -361,14 +398,9 @@ def run(yaml_filename):
     for key, val in hparams.items():
         w.writerow([key, val])
 
-    config_str = "k%d_reg%.1f_emp%d_gatesize%d_nepoch%d_batchsize%d_%s_%s" % (
-        hparams['logistic_k'], hparams['regularization_penalty'], hparams['emptyness_penalty'],
-        hparams['gate_size_penalty'],
-        hparams['n_epoch'], hparams['batch_size'], hparams['init_method'], hparams['loss_type'])
-
     cll_4d_input = Cll4dInput(hparams)
 
-    for random_state in range(3):
+    for random_state in range(hparams['n_run']):
         hparams['random_state'] = random_state
         cll_4d_input.split(random_state)
 
@@ -392,16 +424,15 @@ def run(yaml_filename):
 
         dafi_tree = run_train_dafi(dafi_tree, hparams, cll_4d_input)
         model_tree, train_tracker, eval_tracker, run_time = run_train_model(model_tree, hparams, cll_4d_input)
-        acc_dict = run_output(
+        output_metric_dict = run_output(
             model_tree, dafi_tree, hparams, cll_4d_input, train_tracker, eval_tracker, run_time)
 
     # only plot once
-    run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, acc_dict['train_accuracy_dafi'],
-                    acc_dict['eval_accuracy_dafi'], config_str)
-    run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input, config_str)
+    run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
+    run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
     print("end")
 
 
 if __name__ == '__main__':
-    #run(sys.argv[1])
+    # run(sys.argv[1])
     run("../configs/test.yaml")

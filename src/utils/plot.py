@@ -54,9 +54,11 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
 
 
 def plot_metrics(x_range, train_tracker, eval_tracker, filename,
-                 output_dafi_train=None, output_dafi_eval=None, train_acc_dafi=None, eval_acc_dafi=None):
+                 output_dafi_train=None,
+                 output_dafi_eval=None,
+                 output_metric_dict = None):
 
-    fig_metric, ax_metric = plt.subplots(nrows=3, ncols=2, figsize=(2 * 3, 3 * 2))
+    fig_metric, ax_metric = plt.subplots(nrows=4, ncols=2, figsize=(2 * 3, 4 * 2))
 
     ax_metric[0, 0].plot(x_range, train_tracker.loss)
     ax_metric[0, 0].plot(x_range, eval_tracker.loss)
@@ -102,13 +104,31 @@ def plot_metrics(x_range, train_tracker, eval_tracker, filename,
     if output_dafi_train == None:
         ax_metric[2, 0].legend(["train acc", "eval acc"], prop={'size': 6})
     else:
-        ax_metric[2, 0].plot(x_range, [train_acc_dafi for _ in x_range])
-        ax_metric[2, 0].plot(x_range, [train_acc_dafi for _ in x_range])
+        ax_metric[2, 0].plot(x_range, [output_metric_dict['train_accuracy_dafi'] for _ in x_range])
+        ax_metric[2, 0].plot(x_range, [output_metric_dict['eval_accuracy_dafi'] for _ in x_range])
         ax_metric[2, 0].legend(["train acc", "eval acc", "train acc-DAFi", "eval acc-DAFi"], prop={'size': 6})
 
-    ax_metric[2, 1].plot(x_range, train_tracker.log_decision_boundary)
-    ax_metric[2, 1].set_xlabel("#Epoch")
-    ax_metric[2, 1].legend(["log decision boundary"], prop={'size': 6})
+    ax_metric[2, 1].plot(x_range, train_tracker.roc_auc_score)
+    ax_metric[2, 1].plot(x_range, eval_tracker.roc_auc_score)
+    if output_dafi_train == None:
+        ax_metric[2, 1].legend(["train auc", "eval auc"], prop={'size': 6})
+    else:
+        ax_metric[2, 1].plot(x_range, [output_metric_dict['train_auc_dafi'] for _ in x_range])
+        ax_metric[2, 1].plot(x_range, [output_metric_dict['eval_auc_dafi'] for _ in x_range])
+        ax_metric[2, 1].legend(["train auc", "eval auc", "train auc-DAFi", "eval auc-DAFi"], prop={'size': 6})
+
+    ax_metric[3, 0].plot(x_range, train_tracker.brier_score_loss)
+    ax_metric[3, 0].plot(x_range, eval_tracker.brier_score_loss)
+    if output_dafi_train == None:
+        ax_metric[3, 0].legend(["train brier", "eval brier"], prop={'size': 6})
+    else:
+        ax_metric[3, 0].plot(x_range, [output_metric_dict['train_brier_score_dafi'] for _ in x_range])
+        ax_metric[3, 0].plot(x_range, [output_metric_dict['eval_brier_score_dafi'] for _ in x_range])
+        ax_metric[3, 0].legend(["train brier", "eval brier", "train brier-DAFi", "eval brier-DAFi"], prop={'size': 6})
+
+    ax_metric[3, 1].plot(x_range, train_tracker.log_decision_boundary)
+    ax_metric[3, 1].set_xlabel("#Epoch")
+    ax_metric[3, 1].legend(["log decision boundary"], prop={'size': 6})
 
     fig_metric.tight_layout()
     fig_metric.savefig(filename)

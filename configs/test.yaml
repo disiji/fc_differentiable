@@ -1,2 +1,4 @@
-experiment_name: 'default_test'
-n_epoch: 100
+experiment_name: 'default_test_emptyness'
+n_epoch: 1000
+n_run: 3
+emptyness_penalty: 1
