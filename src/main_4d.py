@@ -436,5 +436,5 @@ def run(yaml_filename, random_state_start=0):
 
 
 if __name__ == '__main__':
-    run(sys.argv[1], sys.argv[2])
+    run(sys.argv[1], int(sys.argv[2]))
     #run("../configs/gate_size_regularization_off.yaml")
