@@ -82,10 +82,14 @@ def run_train_model(model_tree, hparams, input):
             output = model_tree([x_train[j] for j in idx_batch], y_train[idx_batch])
             loss = output['loss']
             loss.backward()
-            if (len(x_train) // hparams['batch_size'] * epoch + i) % hparams['n_mini_batch_update_gates'] == 0:
-                print("optimizing gates...")
-                optimizer_gates.step()
+            if hparams['train_alternate'] == True:
+                if (len(x_train) // hparams['batch_size'] * epoch + i) % hparams['n_mini_batch_update_gates'] == 0:
+                    print("optimizing gates...")
+                    optimizer_gates.step()
+                else:
+                    optimizer_classifier.step()
             else:
+                optimizer_gates.step()
                 optimizer_classifier.step()
 
         # print every n_batch_print mini-batches

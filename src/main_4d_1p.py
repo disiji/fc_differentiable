@@ -28,6 +28,7 @@ default_hparams = {
     'experiment_name': 'default',
     'random_state': 123,
     'n_run': 10,
+    'train_alternate': True
 }
 
 
@@ -37,8 +38,11 @@ def run_single_panel(yaml_filename, random_state_start=0):
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
     hparams['init_method'] = "dafi_init" if hparams['dafi_init'] else "random_init"
-    hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
-            hparams['n_mini_batch_update_gates'] - 1)
+    if hparams['train_alternate']:
+        hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
+                hparams['n_mini_batch_update_gates'] - 1)
+    else:
+        hparams['n_epoch_dafi'] = hparams['n_epoch']
     print(hparams)
 
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
@@ -85,4 +89,4 @@ def run_single_panel(yaml_filename, random_state_start=0):
 
 if __name__ == '__main__':
     # run(sys.argv[1], int(sys.argv[2]))
-    run_single_panel("../configs/cll_4d_1p_default.yaml", 0)
+    run_single_panel("../configs/cll_4d_1p_non_alternate.yaml", 0)
