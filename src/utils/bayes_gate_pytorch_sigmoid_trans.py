@@ -1,8 +1,10 @@
 from __future__ import division
+
+from math import *
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from math import *
 
 
 class Gate(object):
@@ -42,7 +44,7 @@ class ReferenceTree(object):
 
 
 class ModelNode(nn.Module):
-    def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=1./4):
+    def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=1. / 4):
         """
         :param logistic_k:
         :param reference_tree:
@@ -116,9 +118,9 @@ class ModelNode(nn.Module):
                + F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim2] - gate_low2))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim2] - gate_upp2)))
         ref_reg_penalty = (gate_low1 - self.reference_tree.gate.gate_low1) ** 2 \
-                      + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
-                      + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
-                      + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
+                          + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
+                          + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
+                          + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
         size_reg_penalty = ((gate_upp1 - gate_low1) * (gate_upp2 - gate_low2) - self.gate_size_default) ** 2
         return logp, ref_reg_penalty, size_reg_penalty
 
@@ -126,7 +128,7 @@ class ModelNode(nn.Module):
 class ModelTree(nn.Module):
 
     def __init__(self, reference_tree, logistic_k=10, regularisation_penalty=10., emptyness_penalty=10.,
-                 gate_size_penalty=10, init_tree=None, loss_type='logistic', gate_size_default=1./4):
+                 gate_size_penalty=10, init_tree=None, loss_type='logistic', gate_size_default=1. / 4):
         """
         :param args: pass values for variable n_cell_features, n_sample_features,
         :param kwargs: pass keyworded values for variable logistic_k=?, regularisation_penality=?.
@@ -141,7 +143,6 @@ class ModelTree(nn.Module):
         self.children_dict = nn.ModuleDict()
         self.root = self.add(reference_tree, init_tree)
         self.n_sample_features = reference_tree.n_leafs
-
         # define parameters in the logistic regression model
         self.linear = nn.Linear(self.n_sample_features, 1)
         self.linear.weight.data.exponential_(1.0)
@@ -172,7 +173,7 @@ class ModelTree(nn.Module):
         self.children_dict.update({str(id(node)): child_list})
         return node
 
-    def forward(self, x, y=[]):
+    def forward(self, x, y=None):
         """
 
         :param x: a list of tensors
@@ -219,9 +220,7 @@ class ModelTree(nn.Module):
         output['leaf_logp'] = torch.log(leaf_probs)
         output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
 
-        if len(y) == 0:
-            loss = None
-        else:
+        if len(y) > 0:
             if self.loss_type == "logistic":
                 output['log_loss'] = self.criterion(self.linear(output['leaf_logp']).squeeze(1), y)
             elif self.loss_type == "MSE":
@@ -233,5 +232,99 @@ class ModelTree(nn.Module):
                 if y[sample_idx] == 0:
                     loss = loss + self.emptyness_penalty * leaf_probs[sample_idx][0] / len(y)
         output['loss'] = loss
+
+        return output
+
+
+class ModelForest(nn.Module):
+
+    def __init__(self, reference_tree_list, logistic_k=10, regularisation_penalty=10., emptyness_penalty=10.,
+                 gate_size_penalty=10, init_tree_list=None, loss_type='logistic', gate_size_default=1. / 4):
+        """
+
+        :param reference_tree_list:
+        :param logistic_k:
+        :param regularisation_penalty:
+        :param emptyness_penalty:
+        :param gate_size_penalty:
+        :param init_tree_list:
+        :param loss_type:
+        :param gate_size_default:
+        """
+        super(ModelForest, self).__init__()
+        self.logistic_k = logistic_k
+        self.regularisation_penalty = regularisation_penalty
+        self.emptyness_penalty = emptyness_penalty  # typo
+        self.gate_size_penalty = gate_size_penalty
+        self.gate_size_default = gate_size_default
+        self.loss_type = loss_type
+        self.model_trees = nn.ModuleList()
+        self.n_panels = len(reference_tree_list)
+        self.build(reference_tree_list, init_tree_list)
+
+        # define parameters in the logistic regression model
+        self.n_sample_features = sum([ref_tree.n_leafs for ref_tree in reference_tree_list])
+        self.linear = nn.Linear(self.n_sample_features, 1)
+        self.linear.weight.data.exponential_(1.0)
+        self.linear.bias.data.fill_(-1.0)
+        if self.loss_type == "logistic":
+            self.criterion = nn.BCEWithLogitsLoss()
+        elif self.loss_type == "MSE":
+            self.criterion = nn.MSELoss()
+
+    def build(self, reference_tree_list, init_tree_list):
+        for idx in range(self.n_panels):
+            self.model_trees.append(ModelTree(reference_tree_list[idx],
+                                              logistic_k=self.logistic_k,
+                                              regularisation_penalty=self.regularisation_penalty,
+                                              emptynesss_penalty=self.emptyness_penalty,
+                                              gate_size_penalty=self.gate_size_penalty,
+                                              init_tree=init_tree_list[idx],
+                                              loss_type=self.loss_type,
+                                              gate_size_default=self.gate_size_default))
+
+    def forward(self, x, y=None):
+        """
+
+        :param x: a list of a list of tensors, each list is of same length. (n_samples, n_panels, (n_cell * n_marker))
+        :param y: a tensor of (n_samples, )
+        :return:
+        """
+        output = {'leaf_probs': None,
+                  'leaf_logp': None,
+                  'y_pred': None,
+                  'ref_reg_loss': 0,
+                  'size_reg_loss': 0,
+                  'emp_reg_loss': 0,
+                  'log_loss': None,
+                  'loss': None
+                  }
+
+        tensor = torch.tensor((), dtype=torch.float32)
+        output['leaf_probs'] = tensor.new_zeros((len(x), self.n_sample_features))
+
+        feature_counter = 0
+        for panel_idx in range(self.n_panels):
+            x_panel = [x_sample[panel_idx] for x_sample in x]
+            output_panel = self.model_trees[panel_idx](x_panel)
+            n_panel_features = output_panel['leaf_probs'].shape[1]
+            output['leaf_probs'][:, feature_counter: (feature_counter + n_panel_features)] = output_panel['leaf_probs']
+            feature_counter += n_panel_features
+            output['ref_reg_loss'] += output_panel['ref_reg_loss']
+            output['size_reg_loss'] += output_panel['size_reg_loss']
+
+        output['leaf_logp'] = torch.log(output['leaf_probs'])
+        output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
+
+        if len(y) > 0:
+            if self.loss_type == "logistic":
+                output['log_loss'] = self.criterion(self.linear(output['leaf_logp']).squeeze(1), y)
+            elif self.loss_type == "MSE":
+                output['log_loss'] = self.criterion(output['y_pred'], y)
+            for sample_idx in range(len(y)):
+                if y[sample_idx] == 0:
+                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.emptyness_penalty * \
+                                             output['leaf_probs'][sample_idx][0] / len(y)
+            output['loss'] = output['ref_reg_loss'] + output['size_reg_loss'] + output['emp_reg_loss'] + output['log_loss']
 
         return output

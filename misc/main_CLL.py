@@ -3,13 +3,13 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 import numpy as np
 from utils.bayes_gate_pytorch_sigmoid_trans import *
-import utils.load_data as dh
+import utils.utils_load_data as dh
 from sklearn.model_selection import train_test_split
 import time
 import torch
 import pickle
 from copy import deepcopy
-from utils import plot as util_plot
+from utils import utils_plot as util_plot
 from math import *
 import matplotlib.pyplot as plt
 

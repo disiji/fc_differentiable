@@ -4,7 +4,7 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 import numpy as np
 from utils.bayes_gate_pytorch import *
-from utils import plot as util_plot
+from utils import utils_plot as util_plot
 import time
 import torch.nn as nn
 

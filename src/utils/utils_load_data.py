@@ -148,6 +148,24 @@ def normalize_x_list(x_list, offset=None, scale=None):
     normalized_x_list = [(x - offset) / scale for x in x_list]
     return normalized_x_list, offset, scale
 
+def normalize_x_list_multiple_panels(x_list, offset=None, scale=None):
+    """
+
+    :param x_list: a list of a list of numpy arrays, each numpy array is the fc measurements of one panel for one sample
+    :param offset: a list of numpy arrays of shape (n_cell_features, ). The list is of length n_panels
+    :param scale: a list of numpy arrays of shape (n_cell_features, ). The list is of length n_panels
+    :return:
+    """
+    n_panels = len(x_list[0])
+    x_list = list(map(list, zip(*x_list)))
+    offset = [None] * n_panels
+    scale = [None] * n_panels
+    normalized_x_list = [None] * n_panels
+    for panel_idx in range(n_panels):
+        normalized_x_list[panel_idx], offset[panel_idx], scale[panel_idx] = normalize_x_list(x_list[panel_idx])
+    normalized_x_list = list(map(list, zip(*normalized_x_list)))
+    return normalized_x_list, offset, scale
+
 
 def normalize_nested_tree(nested_tree, offset, scale, feature2id):
     """
@@ -170,3 +188,9 @@ def normalize_nested_tree(nested_tree, offset, scale, feature2id):
 
     return [gate, [normalize_nested_tree(child, offset, scale, feature2id)
                    for child in nested_tree[1]]]
+
+
+if __name__ == '__main__':
+    x_list = [[np.array([[1,2],[3,4]]), np.array([[5,6],[7,8]])], [np.array([[1,2],[3,4]]), np.array([[5,6],[7,8]])]]
+    print(x_list)
+    print(normalize_x_list_multiple_panels(x_list))

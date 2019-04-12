@@ -3,7 +3,7 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 import numpy as np
 from utils.bayes_gate_pytorch import *
-import utils.load_data as dh
+import utils.utils_load_data as dh
 from sklearn.model_selection import train_test_split
 import torch
 import time

@@ -1,1 +1,6 @@
-experiment_name: 'default'
+experiment_name: 'default_0.05_0.05'
+learning_rate_classifier: 0.05
+learning_rate_gates: 0.05
+n_epoch: 1000
+n_run: 3
+batch_size: 10
