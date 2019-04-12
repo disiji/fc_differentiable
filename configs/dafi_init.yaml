@@ -1,6 +1,0 @@
-experiment_name: 'dafi_init_epoch500'
-dafi_init: True
-learning_rate_classifier: 0.05
-learning_rate_gates: 0.05
-n_epoch: 500
-n_run: 3

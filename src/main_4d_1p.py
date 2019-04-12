@@ -21,13 +21,13 @@ default_hparams = {
     'n_epoch_eval': 20,
     'n_mini_batch_update_gates': 50,
     'learning_rate_classifier': 0.05,
-    'learning_rate_gates': 0.1,
-    'batch_size': 85,
-    'n_epoch': 500,
+    'learning_rate_gates': 0.05,
+    'batch_size': 10,
+    'n_epoch': 1000,
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
-    'n_run': 100,
+    'n_run': 10,
 }
 
 
@@ -85,4 +85,4 @@ def run_single_panel(yaml_filename, random_state_start=0):
 
 if __name__ == '__main__':
     # run(sys.argv[1], int(sys.argv[2]))
-    run_single_panel("../configs/emp_regularization_off.yaml", 0)
+    run_single_panel("../configs/cll_4d_1p_default.yaml", 0)
