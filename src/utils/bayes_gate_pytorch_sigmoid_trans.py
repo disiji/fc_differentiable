@@ -121,7 +121,8 @@ class ModelNode(nn.Module):
                           + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
                           + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
                           + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
-        size_reg_penalty = ((gate_upp1 - gate_low1) * (gate_upp2 - gate_low2) - self.gate_size_default) ** 2
+        size_reg_penalty = (abs(gate_upp1 - gate_low1) - self.gate_size_default[0]) **2 + \
+                            (abs(gate_upp2 - gate_low2) - self.gate_size_default[1]) ** 2
         return logp, ref_reg_penalty, size_reg_penalty
 
 

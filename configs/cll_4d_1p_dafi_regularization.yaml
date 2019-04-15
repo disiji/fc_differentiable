@@ -1,2 +1,3 @@
 experiment_name: 'cll_4d_1p_dafi_regularization'
 regularization_penalty: 1
+train_alternate: False

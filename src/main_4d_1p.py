@@ -13,7 +13,7 @@ default_hparams = {
     'regularization_penalty': 0,
     'emptyness_penalty': 1,
     'gate_size_penalty': 1,
-    'gate_size_default': 1. / 4,
+    'gate_size_default': (0.5, 0.5),
     'load_from_pickle': True,
     'dafi_init': False,
     'optimizer': "Adam",  # or Adam, SGD
@@ -89,4 +89,4 @@ def run_single_panel(yaml_filename, random_state_start=0):
 
 if __name__ == '__main__':
     # run(sys.argv[1], int(sys.argv[2]))
-    run_single_panel("../configs/cll_4d_1p_non_alternate.yaml", 0)
+    run_single_panel("../configs/cll_4d_1p_dafi_regularization.yaml", 6)
