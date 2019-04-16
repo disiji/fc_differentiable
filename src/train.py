@@ -214,3 +214,12 @@ def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, 
     util_plot.plot_cll(input.x, filtered_normalized_x, input.y, input.features, model_tree, input.reference_tree,
                        train_tracker, eval_tracker, model_pred, model_pred_prob, dafi_pred, dafi_pred_prob,
                        filename_root_pas, filename_root_neg, filename_leaf_pas, filename_leaf_neg)
+
+
+def run_write_prediction(model, input, hparams):
+    np.savetxt("../output/%s/predictions_train.csv" % (hparams['experiment_name']),
+               model(input.x_train, input.y_train)['y_pred'].detach().numpy())
+    np.savetxt("../output/%s/predictions_test.csv" % (hparams['experiment_name']),
+               model(input.x_eval, input.y_eval)['y_pred'].detach().numpy())
+    np.savetxt("../output/%s/predictions_whole.csv" % (hparams['experiment_name']),
+               model(input.x, input.y)['y_pred'].detach().numpy())

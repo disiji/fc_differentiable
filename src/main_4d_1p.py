@@ -1,5 +1,6 @@
 import csv
 import os
+import sys
 
 import yaml
 
@@ -27,12 +28,12 @@ default_hparams = {
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
-    'n_run': 10,
+    'n_run': 50,
     'train_alternate': True
 }
 
 
-def run_single_panel(yaml_filename, random_state_start=0):
+def run_single_panel(yaml_filename, random_state_start=0, plot_and_write_output=True):
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
@@ -82,11 +83,12 @@ def run_single_panel(yaml_filename, random_state_start=0):
             model_tree, dafi_tree, hparams, cll_4d_input, train_tracker, eval_tracker, run_time)
 
         # only plot once
-        if not os.path.isfile('../output/%s/metrics.png' % hparams['experiment_name']):
+        if not os.path.isfile('../output/%s/metrics.png' % hparams['experiment_name']) and plot_and_write_output:
             run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
             run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
+            run_write_prediction(model_tree, cll_4d_input, hparams)
 
 
 if __name__ == '__main__':
-    # run(sys.argv[1], int(sys.argv[2]))
-    run_single_panel("../configs/cll_4d_1p_dafi_regularization.yaml", 6)
+    run(sys.argv[1], int(sys.argv[2]))
+    # run_single_panel("../configs/cll_4d_1p_default.yaml", 0, True)

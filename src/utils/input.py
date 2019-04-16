@@ -96,10 +96,10 @@ class Cll4dInput(CLLInputBase):
     def _get_init_nested_list_(self):
         self.init_nested_list = \
             [
-                [[u'CD5', 2000., 3000.], [u'CD19', 2000., 3000.]],
+                [[u'CD5', 1019., 3056.], [u'CD19', 979., 2937.]],
                 [
                     [
-                        [[u'CD10', 1000., 2000.], [u'CD79b', 1000., 2000.]],
+                        [[u'CD10', 1024., 3071.], [u'CD79b', 992., 2975.]],
                         []
                     ]
                 ]
@@ -107,7 +107,7 @@ class Cll4dInput(CLLInputBase):
 
     def _normalize_(self):
         self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
-        print(self.features_full, self.features, self.feature2id)
+        print(self.features_full, self.features, self.feature2id, offset, scale)
         self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
                                                               self.feature2id)
         self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
