@@ -3,9 +3,12 @@ import pickle
 import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
+import pandas as pd
 
-import utils.utils_load_data as dh
-from utils.bayes_gate_pytorch_sigmoid_trans import ReferenceTree
+import utils_load_data as dh
+from bayes_gate_pytorch_sigmoid_trans import ReferenceTree
+
+import os
 
 
 class CLLInputBase:
@@ -163,10 +166,52 @@ class Cll4d2pInput(CLLInputBase):
         self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
 
+    def _get_data_(self, convert_name_func, src_dir, sep='\t'):
+        files = os.listdir(src_dir)
+        accepted_files = np.array(files)
+        all_data = []
+        ids = []
+        for f in accepted_files:
+            if col_names == 'all':
+                all_data.append(pd.read_csv(os.path.join(src_dir, f), sep=sep).values)
+            else:
+                all_data.append(pd.read_csv(os.path.join(src_dir, f), sep=sep)[col_names].values)
+            try:
+                ids.append(int(convert_name_func(f))) #throws error if a file name needs to be edited
+            except:
+                print('File %s needs to be changed so the sample id is the fourth string when splitting on the underscore character' %f)
+        return all_data, ids
+    
     def _load_data_(self):
         DATA_DIR = '../data/cll/'
         CYTOMETRY_DIR = [DATA_DIR + "PB1_whole_mqian/", DATA_DIR + "PB2_whole_mqian/"]
         DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
+        
+        #Load samples from both directories-all names must be in the same format.
+        PB1_samples, PB1_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[0])
+        PB2_samples, PB2_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[1])
+
+        labels = pd.read_csv(DIAGONOSIS_FILENAME, sep='\t')[['SampleID', 'Diagnosis']]
+        
+        #Match ids and combine into one nested list-sort by order of PB1_ids
+        matched_labels = []
+        matched_samples = []
+        for i1, idx1 in enumerate(PB1_ids):
+            #several samples in PB2/PB1 mqian files arent in PB.txt
+            if labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values.shape[0] == 0:
+                continue
+            i2 = PB2_ids.index(idx1)
+            matched_samples.append([PB1_samples[i1], PB2_samples[i2]])
+            print(labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values[0], idx1)
+            matched_labels.append(labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values[0])
+        
+        with open('../data/Two_Panel', 'wb') as f:
+            pickle.dump((matched_samples, matched_labels), f)
+
+        return matched_samples, matched_labels
+
+
+
         # todo: load pb1 an pb2 data to x_list and write them to pickle files to avoid loading and filtering them everytime
         # self.x_list = [[x_pb1_idx, x_pb2_idx] for idx in range(n_samples)] # x_pb1_idx, x_pb2_idx are numpy arrays
         # self.y_list = [y_idx for idx in range(n_samples)]
@@ -239,3 +284,49 @@ class Cll4d2pInput(CLLInputBase):
                        self.x_eval.tolist()]
         self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
         self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
+
+if __name__ == '__main__':
+    #Not sure how to init your objects rn so just copied pasted to test
+    def _get_data_(convert_name_func, src_dir, sep='\t'):
+        files = os.listdir(src_dir)
+        accepted_files = np.array(files)
+        all_data = []
+        ids = []
+        for f in accepted_files:
+            all_data.append(pd.read_csv(os.path.join(src_dir, f), sep=sep).values)
+            try:
+                ids.append(int(convert_name_func(f))) #throws error if a file name needs to be edited
+            except:
+                print('File %s needs to be changed so the sample id is the fourth string when splitting on the underscore character' %f)
+        return all_data, ids
+
+    def _load_data_():
+        DATA_DIR = '../data/cll/'
+        CYTOMETRY_DIR = [DATA_DIR + "PB1_whole_mqian/", DATA_DIR + "PB2_whole_mqian/"]
+        DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
+        
+        #Load samples from both directories-all names must be in the same format.
+        PB1_samples, PB1_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[0])
+        PB2_samples, PB2_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[1])
+
+        labels = pd.read_csv(DIAGONOSIS_FILENAME, sep='\t')[['SampleID', 'Diagnosis']]
+        
+        #Match ids and combine into one nested list-sort by order of PB1_ids
+        matched_labels = []
+        matched_samples = []
+        for i1, idx1 in enumerate(PB1_ids):
+            #several samples in PB2/PB1 mqian files arent in PB.txt
+            if labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values.shape[0] == 0:
+                continue
+            i2 = PB2_ids.index(idx1)
+            matched_samples.append([PB1_samples[i1], PB2_samples[i2]])
+            print(labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values[0], idx1)
+            matched_labels.append(labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values[0])
+        
+        with open('../data/Two_Panel', 'wb') as f:
+            pickle.dump((matched_samples, matched_labels), f)
+
+        return matched_samples, matched_labels
+
+    samples, labels = _load_data_()
+    
