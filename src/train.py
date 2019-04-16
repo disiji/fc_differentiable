@@ -216,10 +216,16 @@ def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, 
                        filename_root_pas, filename_root_neg, filename_leaf_pas, filename_leaf_neg)
 
 
-def run_write_prediction(model, input, hparams):
-    np.savetxt("../output/%s/predictions_train.csv" % (hparams['experiment_name']),
-               model(input.x_train, input.y_train)['y_pred'].detach().numpy())
-    np.savetxt("../output/%s/predictions_test.csv" % (hparams['experiment_name']),
-               model(input.x_eval, input.y_eval)['y_pred'].detach().numpy())
-    np.savetxt("../output/%s/predictions_whole.csv" % (hparams['experiment_name']),
-               model(input.x, input.y)['y_pred'].detach().numpy())
+def run_write_prediction(model_tree, dafi_tree, input, hparams):
+    np.savetxt("../output/%s/predictions_model_train.csv" % (hparams['experiment_name']),
+               model_tree(input.x_train, input.y_train)['y_pred'].detach().numpy())
+    np.savetxt("../output/%s/predictions_model_test.csv" % (hparams['experiment_name']),
+               model_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy())
+    np.savetxt("../output/%s/predictions_model_whole.csv" % (hparams['experiment_name']),
+               model_tree(input.x, input.y)['y_pred'].detach().numpy())
+    np.savetxt("../output/%s/predictions_dafi_train.csv" % (hparams['experiment_name']),
+               dafi_tree(input.x_train, input.y_train)['y_pred'].detach().numpy())
+    np.savetxt("../output/%s/predictions_dafi_test.csv" % (hparams['experiment_name']),
+               dafi_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy())
+    np.savetxt("../output/%s/predictions_dafi_whole.csv" % (hparams['experiment_name']),
+               dafi_tree(input.x, input.y)['y_pred'].detach().numpy())
