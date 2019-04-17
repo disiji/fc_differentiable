@@ -78,7 +78,7 @@ class Cll4dInput(CLLInputBase):
                 self.y_list = pickle.load(f)
         else:
             x, y = dh.load_cll_data(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
-            x_4d = dh.filter_cll_4d(x)
+            x_4d = dh.filter_cll_4d_PB1(x)
             with open(DATA_DIR + 'filtered_4d_x_list.pkl', 'wb') as f:
                 pickle.dump(x_4d, f)
             with open(DATA_DIR + 'y_list.pkl', 'wb') as f:
@@ -87,26 +87,35 @@ class Cll4dInput(CLLInputBase):
 
     def _get_reference_nested_list_(self):
         self.reference_nested_list = [
-            [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
+            [[u'CD38', 0.0., 1740.], [u'CD20', 614., 2252.]],
             [
                 [
-                    [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
+                    [[u'Anti-Kappa', 1536., 3481.], [u'Anti-Lambda', 0., 1536.]],
+                    []
+                ],
+            
+                [
+                    [[u'Anti-Kappa', 0., 1536.], [u'Anti-Lambda', 1536., 3481.]],
                     []
                 ]
             ]
         ]
 
     def _get_init_nested_list_(self):
-        self.init_nested_list = \
+        self.init_nested_list = [
+            [[u'CD38', 0.0., 500.], [u'CD20', 100., 1400.]],
             [
-                [[u'CD5', 2000., 3000.], [u'CD19', 2000., 3000.]],
                 [
-                    [
-                        [[u'CD10', 1000., 2000.], [u'CD79b', 1000., 2000.]],
-                        []
-                    ]
+                    [[u'Anti-Kappa', 800., 2300.], [u'Anti-Lambda', 0., 400.]],
+                    []
+                ],
+            
+                [
+                    [[u'Anti-Kappa', 0., 800.], [u'Anti-Lambda', 800., 2300.]],
+                    []
                 ]
             ]
+        ]
 
     def _normalize_(self):
         self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
@@ -166,7 +175,8 @@ class Cll4d2pInput(CLLInputBase):
         self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
 
-    def _get_data_(self, convert_name_func, src_dir, sep='\t'):
+
+    def _get_data_(self, convert_name_func, src_dir, col_names, sep='\t'):
         files = os.listdir(src_dir)
         accepted_files = np.array(files)
         all_data = []
@@ -182,34 +192,57 @@ class Cll4d2pInput(CLLInputBase):
                 print('File %s needs to be changed so the sample id is the fourth string when splitting on the underscore character' %f)
         return all_data, ids
     
+    
+
     def _load_data_(self):
         DATA_DIR = '../data/cll/'
         CYTOMETRY_DIR = [DATA_DIR + "PB1_whole_mqian/", DATA_DIR + "PB2_whole_mqian/"]
         DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
-        
+        features_full_PB1 = ('FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3')
+        features_full_PB2 = ('FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD38', 'CD20', 'Anti-Lambda', 'Anti-Kappa')
+
         #Load samples from both directories-all names must be in the same format.
-        PB1_samples, PB1_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[0])
-        PB2_samples, PB2_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[1])
+        PB1_samples, PB1_ids = self._get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[0], list(features_full_PB1))
+        PB2_samples, PB2_ids = self._get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[1], list(features_full_PB2))
 
         labels = pd.read_csv(DIAGONOSIS_FILENAME, sep='\t')[['SampleID', 'Diagnosis']]
         
         #Match ids and combine into one nested list-sort by order of PB1_ids
         matched_labels = []
-        matched_samples = []
+        PB2_in_order = []
         for i1, idx1 in enumerate(PB1_ids):
-            #several samples in PB2/PB1 mqian files arent in PB.txt
+            #several samples in PB2/PB1 mqian files arent in PB.txt, so ignore these
             if labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values.shape[0] == 0:
                 continue
             i2 = PB2_ids.index(idx1)
-            matched_samples.append([PB1_samples[i1], PB2_samples[i2]])
+            #matched_samples.append([PB1_samples[i1], PB2_samples[i2]])
+            PB2_in_order.append(PB2_samples[i2])
             print(labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values[0], idx1)
             matched_labels.append(labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values[0])
         
-        with open('../data/Two_Panel', 'wb') as f:
+        #now filter the data
+        PB1_filtered = dh.filter_cll_4d_PB1(PB1_samples)
+        PB2_filtered = dh.filter_cll_2d_PB2(PB2_in_order)
+
+        matched_samples = [[PB1_sample, PB2_sample] for PB1_sample, PB2_sample in zip(PB1_filtered, PB2_filtered)]
+
+        #for m,matched_pair in enumerate(matched_samples):
+        #    print(matched_pair[0].shape[0])
+        #    print(matched_pair[0][0:15])
+        #    PB1 = dh.filter_cll_4d_PB1(matched_pair[0])
+        #    PB2 = dh.filter_cll_4d_PB2(matched_pair[0])
+        #    matched_samples[m] = [PB1, PB2]
+        #    
+
+        #Might want to convert here to tensors, and to make sure the datatypes are correct for the mains
+
+        with open('../data/cll/Two_Panel.pkl', 'wb') as f:
             pickle.dump((matched_samples, matched_labels), f)
 
         return matched_samples, matched_labels
 
+
+    
 
 
         # todo: load pb1 an pb2 data to x_list and write them to pickle files to avoid loading and filtering them everytime
@@ -287,43 +320,67 @@ class Cll4d2pInput(CLLInputBase):
 
 if __name__ == '__main__':
     #Not sure how to init your objects rn so just copied pasted to test
-    def _get_data_(convert_name_func, src_dir, sep='\t'):
+    def _get_data_( convert_name_func, src_dir, col_names, sep='\t'):
         files = os.listdir(src_dir)
         accepted_files = np.array(files)
         all_data = []
         ids = []
         for f in accepted_files:
-            all_data.append(pd.read_csv(os.path.join(src_dir, f), sep=sep).values)
+            if col_names == 'all':
+                all_data.append(pd.read_csv(os.path.join(src_dir, f), sep=sep).values)
+            else:
+                all_data.append(pd.read_csv(os.path.join(src_dir, f), sep=sep)[col_names].values)
             try:
                 ids.append(int(convert_name_func(f))) #throws error if a file name needs to be edited
             except:
                 print('File %s needs to be changed so the sample id is the fourth string when splitting on the underscore character' %f)
         return all_data, ids
+    
+    
 
     def _load_data_():
         DATA_DIR = '../data/cll/'
         CYTOMETRY_DIR = [DATA_DIR + "PB1_whole_mqian/", DATA_DIR + "PB2_whole_mqian/"]
         DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
-        
+        features_full_PB1 = ('FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3')
+        features_full_PB2 = ('FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD38', 'CD20', 'Anti-Lambda', 'Anti-Kappa')
+
         #Load samples from both directories-all names must be in the same format.
-        PB1_samples, PB1_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[0])
-        PB2_samples, PB2_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[1])
+        PB1_samples, PB1_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[0], list(features_full_PB1))
+        PB2_samples, PB2_ids = _get_data_(lambda x: x.split('_')[3], CYTOMETRY_DIR[1], list(features_full_PB2))
 
         labels = pd.read_csv(DIAGONOSIS_FILENAME, sep='\t')[['SampleID', 'Diagnosis']]
         
         #Match ids and combine into one nested list-sort by order of PB1_ids
         matched_labels = []
-        matched_samples = []
+        PB2_in_order = []
         for i1, idx1 in enumerate(PB1_ids):
-            #several samples in PB2/PB1 mqian files arent in PB.txt
+            #several samples in PB2/PB1 mqian files arent in PB.txt, so ignore these
             if labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values.shape[0] == 0:
                 continue
             i2 = PB2_ids.index(idx1)
-            matched_samples.append([PB1_samples[i1], PB2_samples[i2]])
+            #matched_samples.append([PB1_samples[i1], PB2_samples[i2]])
+            PB2_in_order.append(PB2_samples[i2])
             print(labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values[0], idx1)
             matched_labels.append(labels.loc[labels['SampleID'] == idx1]['Diagnosis'].values[0])
         
-        with open('../data/Two_Panel', 'wb') as f:
+        #now filter the data
+        PB1_filtered = dh.filter_cll_4d_PB1(PB1_samples)
+        PB2_filtered = dh.filter_cll_2d_PB2(PB2_in_order)
+
+        matched_samples = [[PB1_sample, PB2_sample] for PB1_sample, PB2_sample in zip(PB1_filtered, PB2_filtered)]
+
+        #for m,matched_pair in enumerate(matched_samples):
+        #    print(matched_pair[0].shape[0])
+        #    print(matched_pair[0][0:15])
+        #    PB1 = dh.filter_cll_4d_PB1(matched_pair[0])
+        #    PB2 = dh.filter_cll_4d_PB2(matched_pair[0])
+        #    matched_samples[m] = [PB1, PB2]
+        #    
+
+        #Might want to convert here to tensors, and to make sure the datatypes are correct for the mains
+
+        with open('../data/cll/Two_Panel.pkl', 'wb') as f:
             pickle.dump((matched_samples, matched_labels), f)
 
         return matched_samples, matched_labels

@@ -73,8 +73,35 @@ def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2):
     idx = (data[:, dim1] > x1) & (data[:, dim1] < x2) & (data[:, dim2] > y1) & (data[:, dim2] < y2)
     return data[idx]
 
+def filter_cll_4d_PB2(x_list):
+    """
 
-def filter_cll_4d(x_list):
+    :param x_list: list of numpy arrays per sample
+    :return: list of filtered numpy arrays per sample
+    """
+    idx = 3
+
+    filtered_x_list = [filter_slope(x, 0, 1, 2048, 4096, 2048, 2560) for x in x_list]
+    print('After first slope gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+
+    filtered_x_list = [filter_rectangle(x, 2, 3, 102, 921, 2048, 3891) for x in filtered_x_list]
+    print('After second gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+
+    filtered_x_list = [filter_rectangle(x, 0, 4, 921, 2150, 102, 921) for x in filtered_x_list]
+    print('After third gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+
+    
+    filtered_x_list = [filter_rectangle(x, 7, 6, 0, 1536, 2048, 3891) for x in filtered_x_list]
+    print('After fourth gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+
+    filtered_x_list = [filter_rectangle(x, 7, 8, 0, 1740, 614, 2252) for x in filtered_x_list]
+    print('After fifth gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+
+    filtered_x_list_4d = [x_list[:, [7, 8, 9,10]] for x_list in filtered_x_list]
+
+    return filtered_x_list_4d
+
+def filter_cll_4d_PB1(x_list):
     """
 
     :param x_list:
