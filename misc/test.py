@@ -1,12 +1,10 @@
-import torch
 from random import shuffle
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 import numpy as np
-from utils.bayes_gate_pytorch import *
+from misc.bayes_gate_pytorch import *
 from utils import utils_plot as util_plot
 import time
-import torch.nn as nn
 
 if __name__ == '__main__':
 
