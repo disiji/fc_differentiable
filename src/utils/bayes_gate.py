@@ -121,15 +121,28 @@ class ModelNode(nn.Module):
                           + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
                           + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
                           + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
-        size_reg_penalty = (abs(gate_upp1 - gate_low1) - self.gate_size_default[0]) **2 + \
-                            (abs(gate_upp2 - gate_low2) - self.gate_size_default[1]) ** 2
-        return logp, ref_reg_penalty, size_reg_penalty
+        size_reg_penalty = (abs(gate_upp1 - gate_low1) - self.gate_size_default[0]) ** 2 + \
+                           (abs(gate_upp2 - gate_low2) - self.gate_size_default[1]) ** 2
+        corner_reg_penalty = torch.rsqrt(torch.min(torch.tensor([gate_low1 ** 2 + gate_low2 ** 2,
+                                                                 gate_low1 ** 2 + (1 - gate_upp2) ** 2,
+                                                                 (1 - gate_upp1) ** 2 + gate_low2 ** 2,
+                                                                 (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2])))
+        return logp, ref_reg_penalty, size_reg_penalty, corner_reg_penalty
 
 
 class ModelTree(nn.Module):
 
-    def __init__(self, reference_tree, logistic_k=10, regularisation_penalty=10., emptyness_penalty=10.,
-                 gate_size_penalty=10, init_tree=None, loss_type='logistic', gate_size_default=1. / 4):
+    def __init__(self, reference_tree,
+                 logistic_k=10,
+                 regularisation_penalty=10.,
+                 positive_box_penalty=10.,
+                 negative_box_penalty=10.,
+                 corner_penalty=1.,
+                 gate_size_penalty=10,
+                 init_tree=None,
+                 loss_type='logistic',
+                 gate_size_default=(1. / 2, 1. / 2),
+                 classifier=True):
         """
         :param args: pass values for variable n_cell_features, n_sample_features,
         :param kwargs: pass keyworded values for variable logistic_k=?, regularisation_penality=?.
@@ -137,21 +150,25 @@ class ModelTree(nn.Module):
         super(ModelTree, self).__init__()
         self.logistic_k = logistic_k
         self.regularisation_penalty = regularisation_penalty
-        self.emptyness_penalty = emptyness_penalty  # typo
+        self.positive_box_penalty = positive_box_penalty
+        self.negative_box_penalty = negative_box_penalty
+        self.corner_penalty = corner_penalty
         self.gate_size_penalty = gate_size_penalty
         self.gate_size_default = gate_size_default
         self.loss_type = loss_type
+        self.classifier = classifier
         self.children_dict = nn.ModuleDict()
         self.root = self.add(reference_tree, init_tree)
         self.n_sample_features = reference_tree.n_leafs
         # define parameters in the logistic regression model
-        self.linear = nn.Linear(self.n_sample_features, 1)
-        self.linear.weight.data.exponential_(1.0)
-        self.linear.bias.data.fill_(-1.0)
-        if self.loss_type == "logistic":
-            self.criterion = nn.BCEWithLogitsLoss()
-        elif self.loss_type == "MSE":
-            self.criterion = nn.MSELoss()
+        if self.classifier:
+            self.linear = nn.Linear(self.n_sample_features, 1)
+            self.linear.weight.data.exponential_(1.0)
+            self.linear.bias.data.fill_(-1.0)
+            if self.loss_type == "logistic":
+                self.criterion = nn.BCEWithLogitsLoss()
+            elif self.loss_type == "MSE":
+                self.criterion = nn.MSELoss()
 
     def add(self, reference_tree, init_tree=None):
         """
@@ -190,7 +207,9 @@ class ModelTree(nn.Module):
                   'y_pred': None,
                   'ref_reg_loss': 0,
                   'size_reg_loss': 0,
+                  'emp_reg_loss': 0,
                   'log_loss': None,
+                  'corner_loss': 0,
                   'loss': None
                   }
 
@@ -204,9 +223,10 @@ class ModelTree(nn.Module):
             while this_level:
                 next_level = list()
                 for (node, pathlogp) in this_level:
-                    logp, ref_reg_penalty, size_reg_penalty = node(x[sample_idx])
+                    logp, ref_reg_penalty, size_reg_penalty, corner_reg_penalty = node(x[sample_idx])
                     output['ref_reg_loss'] += ref_reg_penalty * self.regularisation_penalty / len(x)
                     output['size_reg_loss'] += size_reg_penalty * self.gate_size_penalty / len(x)
+                    output['corner_loss'] += corner_reg_penalty * self.corner_penalty / len(x)
                     pathlogp = pathlogp + logp
                     if len(self.children_dict[str(id(node))]) > 0:
                         for child_node in self.children_dict[str(id(node))]:
@@ -215,32 +235,49 @@ class ModelTree(nn.Module):
                         leaf_probs[sample_idx, leaf_idx] = pathlogp.exp().sum(dim=0) / x[sample_idx].shape[0]
                 this_level = next_level
 
-        loss = output['ref_reg_loss'] + output['size_reg_loss']
+        loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_loss']
 
         output['leaf_probs'] = leaf_probs
         output['leaf_logp'] = torch.log(leaf_probs)
-        output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
 
-        if len(y) > 0:
-            if self.loss_type == "logistic":
-                output['log_loss'] = self.criterion(self.linear(output['leaf_logp']).squeeze(1), y)
-            elif self.loss_type == "MSE":
-                output['log_loss'] = self.criterion(output['y_pred'], y)
-            loss = loss + output['log_loss']
+        if self.classifier:
+            output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
+
+        if y is not None:
+            if self.classifier:
+                if self.loss_type == "logistic":
+                    output['log_loss'] = self.criterion(self.linear(output['leaf_logp']).squeeze(1), y)
+                elif self.loss_type == "MSE":
+                    output['log_loss'] = self.criterion(output['y_pred'], y)
+                loss = loss + output['log_loss']
             # add regularization on the number of cells fall into the leaf gate of negative samples;
             # todo: replace this part of implementation by adding an attribute in class "Gate" to handle more genreal cases
             for sample_idx in range(len(y)):
                 if y[sample_idx] == 0:
-                    loss = loss + self.emptyness_penalty * leaf_probs[sample_idx][0] / len(y)
-        output['loss'] = loss
+                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.negative_box_penalty * \
+                                             output['leaf_probs'][sample_idx][0] / (len(y) - sum(y))
+                else:
+                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
+                                             output['leaf_probs'][sample_idx][0] / sum(y)
+
+        # todo: implement corner_loss
+        output['loss'] = loss + output['emp_reg_loss']
 
         return output
 
 
 class ModelForest(nn.Module):
 
-    def __init__(self, reference_tree_list, logistic_k=10, regularisation_penalty=10., emptyness_penalty=10.,
-                 gate_size_penalty=10, init_tree_list=None, loss_type='logistic', gate_size_default=1. / 4):
+    def __init__(self, reference_tree_list,
+                 logistic_k=10,
+                 regularisation_penalty=10.,
+                 positive_box_penalty=10.,
+                 negative_box_penalty=10.,
+                 corner_penalty=1.,
+                 gate_size_penalty=10,
+                 init_tree_list=None,
+                 loss_type='logistic',
+                 gate_size_default=1. / 4):
         """
 
         :param reference_tree_list:
@@ -255,7 +292,9 @@ class ModelForest(nn.Module):
         super(ModelForest, self).__init__()
         self.logistic_k = logistic_k
         self.regularisation_penalty = regularisation_penalty
-        self.emptyness_penalty = emptyness_penalty  # typo
+        self.positive_box_penalty = positive_box_penalty
+        self.negative_box_penalty = negative_box_penalty
+        self.corner_penalty = corner_penalty
         self.gate_size_penalty = gate_size_penalty
         self.gate_size_default = gate_size_default
         self.loss_type = loss_type
@@ -278,11 +317,14 @@ class ModelForest(nn.Module):
             self.model_trees.append(ModelTree(reference_tree_list[idx],
                                               logistic_k=self.logistic_k,
                                               regularisation_penalty=self.regularisation_penalty,
-                                              emptynesss_penalty=self.emptyness_penalty,
+                                              positive_box_penalty=self.positive_box_penalty,
+                                              negative_box_penalty=self.negative_box_penalty,
+                                              corner_penalty=self.corner_penalty,
                                               gate_size_penalty=self.gate_size_penalty,
                                               init_tree=init_tree_list[idx],
                                               loss_type=self.loss_type,
-                                              gate_size_default=self.gate_size_default))
+                                              gate_size_default=self.gate_size_default,
+                                              classifier=False))
 
     def forward(self, x, y=None):
         """
@@ -298,6 +340,7 @@ class ModelForest(nn.Module):
                   'size_reg_loss': 0,
                   'emp_reg_loss': 0,
                   'log_loss': None,
+                  'corner_loss': 0,
                   'loss': None
                   }
 
@@ -313,6 +356,7 @@ class ModelForest(nn.Module):
             feature_counter += n_panel_features
             output['ref_reg_loss'] += output_panel['ref_reg_loss']
             output['size_reg_loss'] += output_panel['size_reg_loss']
+            output['corner_loss'] + output_panel['corner_loss']
 
         output['leaf_logp'] = torch.log(output['leaf_probs'])
         output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
@@ -324,8 +368,12 @@ class ModelForest(nn.Module):
                 output['log_loss'] = self.criterion(output['y_pred'], y)
             for sample_idx in range(len(y)):
                 if y[sample_idx] == 0:
-                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.emptyness_penalty * \
-                                             output['leaf_probs'][sample_idx][0] / len(y)
-            output['loss'] = output['ref_reg_loss'] + output['size_reg_loss'] + output['emp_reg_loss'] + output['log_loss']
+                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.negative_box_penalty * \
+                                             output['leaf_probs'][sample_idx][0] / (len(y) - sum(y))
+                else:
+                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
+                                             output['leaf_probs'][sample_idx][0] / sum(y)
+            output['loss'] = output['ref_reg_loss'] + output['size_reg_loss'] + \
+                             output['emp_reg_loss'] + output['log_loss'] + output['corner_loss']
 
         return output

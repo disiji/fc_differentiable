@@ -19,10 +19,8 @@ class Tracker():
         self.roc_auc_score = []
         self.brier_score_loss = []
         self.log_decision_boundary = []
-        self.root_gate_opt = None
-        self.leaf_gate_opt = None
-        self.root_gate_init = None
-        self.leaf_gate_init = None
+        self.modle_opt = None
+        self.model_init = None
         self.acc_opt = 0
         self.n_iter_opt = (0, 0)
 
@@ -41,7 +39,6 @@ class Tracker():
             (-model.linear.bias.detach() / model.linear.weight.detach()))
         # keep track of optimal gates for train and eval set
         if self.acc[-1] > self.acc_opt:
-            self.root_gate_opt = deepcopy(model.root)
-            self.leaf_gate_opt = deepcopy(model.children_dict[str(id(model.root))][0])
+            self.modle_opt = deepcopy(model)
             self.acc_opt = self.acc[-1]
             self.n_iter_opt = (epoch, i)
