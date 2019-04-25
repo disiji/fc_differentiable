@@ -5,7 +5,7 @@ import torch
 from sklearn.model_selection import train_test_split
 
 import utils.utils_load_data as dh
-from utils.bayes_gate_pytorch_sigmoid_trans import ReferenceTree
+from utils.bayes_gate import ReferenceTree
 
 
 class CLLInputBase:
@@ -44,12 +44,10 @@ class CLLInputBase:
 
 class Cll4dInput(CLLInputBase):
     def __init__(self, hparams):
-        features = 'CD5', 'CD19', 'CD10', 'CD79b'
-        features_full = ('FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3')
         self.hparams = hparams
-        self.features = dict((i, features[i]) for i in range(len(features)))
-        self.features_full = dict((i, features_full[i]) for i in range(len(features_full)))
-        self.feature2id = dict((self.features[i], i) for i in self.features)
+        self.features = ['CD5', 'CD19', 'CD10', 'CD79b']
+        self.features_full = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
+        self.feature2id = dict((self.features[i], i) for i in range(len(self.features)))
 
         self._load_data_()
         self._get_reference_nested_list_()
@@ -69,29 +67,30 @@ class Cll4dInput(CLLInputBase):
         # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
         # y: a list of labels; 1 is CLL, 0 is healthy
         if self.hparams['load_from_pickle']:
-            with open(DATA_DIR + "filtered_4d_x_list.pkl", 'rb') as f:
+            with open(DATA_DIR + "filtered_4d_1p_x_list.pkl", 'rb') as f:
                 self.x_list = pickle.load(f)
-            with open(DATA_DIR + 'y_list.pkl', 'rb') as f:
+            with open(DATA_DIR + 'y_1p_list.pkl', 'rb') as f:
                 self.y_list = pickle.load(f)
         else:
-            x, y = dh.load_cll_data(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
-            x_4d = dh.filter_cll_4d(x)
-            with open(DATA_DIR + 'filtered_4d_x_list.pkl', 'wb') as f:
+            x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
+            x_4d = dh.filter_cll_4d_pb1(x)
+            with open(DATA_DIR + 'filtered_4d_1p_x_list.pkl', 'wb') as f:
                 pickle.dump(x_4d, f)
-            with open(DATA_DIR + 'y_list.pkl', 'wb') as f:
+            with open(DATA_DIR + 'y_1p_list.pkl', 'wb') as f:
                 pickle.dump(y, f)
             self.x_list, self.y_list = x_4d, y
 
     def _get_reference_nested_list_(self):
-        self.reference_nested_list = [
-            [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
+        self.reference_nested_list = \
             [
+                [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
                 [
-                    [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
-                    []
+                    [
+                        [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
+                        []
+                    ]
                 ]
             ]
-        ]
 
     def _get_init_nested_list_(self):
         self.init_nested_list = \
@@ -138,20 +137,11 @@ class Cll4d2pInput(CLLInputBase):
         self.hparams = hparams
         self.n_panels = 2
 
-        features_pb1 = 'CD5', 'CD19', 'CD10', 'CD79b'
-        features_pb2 = 'CD5', 'CD19', 'CD10', 'CD79b'
-        features_full_pb1 = ('FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3')
-        features_full_pb2 = ('FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3')
-        self.features_pb1 = dict((i, features_pb1[i]) for i in range(len(features_pb1)))
-        self.features_pb2 = dict((i, features_pb2[i]) for i in range(len(features_pb2)))
-        self.features_full_pb1 = dict((i, features_full_pb1[i]) for i in range(len(features_full_pb1)))
-        self.features_full_pb2 = dict((i, features_full_pb2[i]) for i in range(len(features_full_pb2)))
-        self.feature2id_pb1 = dict((self.features_pb1[i], i) for i in self.features_pb1)
-        self.feature2id_pb2 = dict((self.features_pb2[i], i) for i in self.features_pb2)
-
-        self.features = [self.features_pb1, self.features_pb2]
-        self.features_full = [self.features_full_pb1, self.features_full_pb2]
-        self.feature2id = [self.feature2id_pb1, self.feature2id_pb2]
+        self.features = [['CD5', 'CD19', 'CD10', 'CD79b'], ['CD38', 'CD20', 'Anti-Lambda', 'Anti-Kappa']]
+        self.features_full = [['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3'], [
+            'FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD38', 'CD20', 'Anti-Lambda', 'Anti-Kappa']]
+        self.feature2id = [dict((self.features[0][i], i) for i in range(len(self.features[0]))),
+                           dict((self.features[1][i], i) for i in range(len(self.features[1])))]
 
         self._load_data_()
         self._get_reference_nested_list_()
@@ -160,63 +150,88 @@ class Cll4d2pInput(CLLInputBase):
         self._construct_()
         self.split()
 
-        self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
+        self.x = [[torch.tensor(_[0], dtype=torch.float32), torch.tensor(_[1], dtype=torch.float32)] for _ in
+                  self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
 
     def _load_data_(self):
         DATA_DIR = '../data/cll/'
-        CYTOMETRY_DIR = [DATA_DIR + "PB1_whole_mqian/", DATA_DIR + "PB2_whole_mqian/"]
+        CYTOMETRY_DIR_PB1 = DATA_DIR + "PB1_whole_mqian/"
+        CYTOMETRY_DIR_PB2 = DATA_DIR + "PB2_whole_mqian/"
         DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
-        # todo: load pb1 an pb2 data to x_list and write them to pickle files to avoid loading and filtering them everytime
         # self.x_list = [[x_pb1_idx, x_pb2_idx] for idx in range(n_samples)] # x_pb1_idx, x_pb2_idx are numpy arrays
         # self.y_list = [y_idx for idx in range(n_samples)]
+        if self.hparams['load_from_pickle']:
+            with open(DATA_DIR + "filtered_4d_2p_x_list.pkl", 'rb') as f:
+                self.x_list = pickle.load(f)
+            with open(DATA_DIR + 'y_2p_list.pkl', 'rb') as f:
+                self.y_list = pickle.load(f)
+        else:
+            x, y = dh.load_cll_data_2p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR_PB1, CYTOMETRY_DIR_PB2,
+                                       self.features_full[0], self.features_full[1])
+            x_4d_pb1 = dh.filter_cll_4d_pb1([_[0] for _ in x])
+            x_4d_pb2 = dh.filter_cll_4d_pb2([_[1] for _ in x])
+            x_4d_2p = [[x_4d_pb1[sample_idx], x_4d_pb2[sample_idx]] for sample_idx in range(len(x_4d_pb1))]
+            with open(DATA_DIR + 'filtered_4d_2p_x_list.pkl', 'wb') as f:
+                pickle.dump(x_4d_2p, f)
+            with open(DATA_DIR + 'y_2p_list.pkl', 'wb') as f:
+                pickle.dump(y, f)
+            self.x_list, self.y_list = x_4d_2p, y
+        print([x[0].shape[0] for x in self.x_list])
+        print([x[1].shape[0] for x in self.x_list])
 
     def _get_reference_nested_list_(self):
-        # todo: extract reference tree for pb2 from the html file
-        self.reference_nested_list = [
-            [
-                [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
-                [
-                    [
-                        [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
-                        []
-                    ]
-                ]
-            ],
-            [
-                [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
-                [
-                    [
-                        [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
-                        []
-                    ]
-                ]
-            ]]
-
-    def _get_init_nested_list_(self):
-        # todo: construct the init tree for pb2
-        self.init_nested_list = \
+        self.reference_nested_list = \
             [[
-                [[u'CD5', 2000., 3000.], [u'CD19', 2000., 3000.]],
+                [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
                 [
                     [
-                        [[u'CD10', 1000., 2000.], [u'CD79b', 1000., 2000.]],
+                        [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
                         []
                     ]
                 ]
             ],
                 [
-                    [[u'CD5', 2000., 3000.], [u'CD19', 2000., 3000.]],
+                    [[u'CD38', 0., 1740.], [u'CD20', 614., 2252.]],
                     [
                         [
-                            [[u'CD10', 1000., 2000.], [u'CD79b', 1000., 2000.]],
+                            [[u'Anti-Kappa', 1536., 3481.], [u'Anti-Lambda', 0., 1536.]],
+                            []
+                        ],
+                        [
+                            [[u'Anti-Kappa', 0., 1536.], [u'Anti-Lambda', 1536., 3481.]],
+                            []
+                        ]
+                    ]
+                ]]
+
+    def _get_init_nested_list_(self):
+        self.init_nested_list = \
+            [[
+                [[u'CD5', 1019., 3056.], [u'CD19', 979., 2937.]],
+                [
+                    [
+                        [[u'CD10', 1024., 3071.], [u'CD79b', 992., 2975.]],
+                        []
+                    ]
+                ]
+            ],
+                [
+                    [[u'CD38', 0., 500.], [u'CD20', 100., 1400.]],
+                    [
+                        [
+                            [[u'Anti-Kappa', 800., 2300.], [u'Anti-Lambda', 0., 400.]],
+                            []
+                        ],
+                        [
+                            [[u'Anti-Kappa', 0., 800.], [u'Anti-Lambda', 800., 2300.]],
                             []
                         ]
                     ]
                 ]]
 
     def _normalize_(self):
-        self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
+        self.x_list, offset, scale = dh.normalize_x_list_multiple_panels(self.x_list)
         self.reference_nested_list = [dh.normalize_nested_tree(self.reference_nested_list[i], offset[i], scale[i],
                                                                self.feature2id[i]) for i in range(self.n_panels)]
         self.init_nested_list = [dh.normalize_nested_tree(self.init_nested_list[i], offset[i], scale[i],
@@ -230,7 +245,7 @@ class Cll4d2pInput(CLLInputBase):
             self.init_tree = [None] * self.n_panels
 
     def split(self, random_state=123):
-        self.x_train, self.x_eval, self.y_train, self.y_eval = train_test_split(np.numpy(self.x_list), self.y_list,
+        self.x_train, self.x_eval, self.y_train, self.y_eval = train_test_split(np.array(self.x_list), self.y_list,
                                                                                 test_size=self.hparams['test_size'],
                                                                                 random_state=random_state)
         self.x_train = [[torch.tensor(_[0], dtype=torch.float32), torch.tensor(_[1], dtype=torch.float32)] for _ in

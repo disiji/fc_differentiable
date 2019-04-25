@@ -1,19 +1,39 @@
 from __future__ import division
-import pandas as pd
+
 import os
 import pickle
+
 import numpy as np
+import pandas as pd
 
 
-def load_cll_data(diagnosis_filename, cytometry_dir, features):
+def load_cll_data_1p(diagnosis_filename, cytometry_dir, features):
     X, y = [], []
-    feat_df = pd.read_csv(diagnosis_filename, sep='\t')
+    diagnosis_df = pd.read_csv(diagnosis_filename, sep='\t')
     for filename in sorted(os.listdir(cytometry_dir)):
         sample_id = int(filename.split('_')[3])
         # filter out PB1 samples that we do not have diagnosis information about
-        if sample_id in feat_df['SampleID'].values:
+        if sample_id in diagnosis_df['SampleID'].values:
             X.append(pd.read_csv(os.path.join(cytometry_dir, filename), sep='\t')[features].values)
-            y.append(feat_df.loc[feat_df['SampleID'] == sample_id]['Diagnosis'].values[0])
+            y.append(diagnosis_df.loc[diagnosis_df['SampleID'] == sample_id]['Diagnosis'].values[0])
+    d = {'no': 0, 'yes': 1}
+    y = [d[_] for _ in y]
+    return X, y
+
+
+def load_cll_data_2p(diagnosis_filename, cytometry_dir_pb1, cytometry_dir_pb2, features_pb1, features_pb2):
+    X, y = [], []
+    diagnosis_df = pd.read_csv(diagnosis_filename, sep='\t')
+    sample_id_list_pb2 = [int(filename.split('_')[3]) for filename in sorted(os.listdir(cytometry_dir_pb2))]
+    id2filename_pb2 = dict(zip(sample_id_list_pb2, sorted(os.listdir(cytometry_dir_pb2))))
+    for filename_pb1 in sorted(os.listdir(cytometry_dir_pb1)):
+        sample_id = int(filename_pb1.split('_')[3])
+        if sample_id in diagnosis_df['SampleID'].values and sample_id in sample_id_list_pb2:
+            filename_pb2 = id2filename_pb2[sample_id]
+            x_pb1 = pd.read_csv(os.path.join(cytometry_dir_pb1, filename_pb1), sep='\t')[features_pb1].values
+            x_pb2 = pd.read_csv(os.path.join(cytometry_dir_pb2, filename_pb2), sep='\t')[features_pb2].values
+            X.append([x_pb1, x_pb2])
+            y.append(diagnosis_df.loc[diagnosis_df['SampleID'] == sample_id]['Diagnosis'].values[0])
     d = {'no': 0, 'yes': 1}
     y = [d[_] for _ in y]
     return X, y
@@ -74,7 +94,7 @@ def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2):
     return data[idx]
 
 
-def filter_cll_4d(x_list):
+def filter_cll_4d_pb1(x_list):
     """
 
     :param x_list:
@@ -96,7 +116,29 @@ def filter_cll_4d(x_list):
     return filtered_x_list_4d
 
 
-def filter_cll_leaf(x_list):
+def filter_cll_4d_pb2(x_list):
+    """
+     :param x_list: list of numpy arrays per sample
+    :return: list of filtered numpy arrays per sample
+    """
+    idx = 3
+
+    filtered_x_list = [filter_slope(x, 0, 1, 2048, 4096, 2048, 2560) for x in x_list]
+    print('After first slope gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list = [filter_rectangle(x, 2, 3, 102, 921, 2048, 3891) for x in filtered_x_list]
+    print('After second gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list = [filter_rectangle(x, 0, 4, 921, 2150, 102, 921) for x in filtered_x_list]
+    print('After third gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list = [filter_rectangle(x, 5, 6, 1638, 3891, 2150, 3891) for x in filtered_x_list]
+    print('After fourth gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    # filtered_x_list = [filter_rectangle(x, 7, 8, 0, 1740, 614, 2252) for x in filtered_x_list]
+    # print('After fifth gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list_4d = [x_list[:, 7:11] for x_list in filtered_x_list]
+
+    return filtered_x_list_4d
+
+
+def filter_cll_leaf_pb1(x_list):
     """
 
     :param x_list:
@@ -110,9 +152,31 @@ def filter_cll_leaf(x_list):
     filtered_x_list = [filter_rectangle(x, 0, 4, 921, 2150, 102, 921) for x in filtered_x_list]
     print('After third gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
     filtered_x_list = [filter_rectangle(x, 5, 6, 1638, 3891, 2150, 3891) for x in filtered_x_list]
-    print('After fourth gate %d remain in sample %s' %(filtered_x_list[idx].shape[0], idx))
+    print('After fourth gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
     filtered_x_list = [filter_rectangle(x, 7, 8, 0, 1228, 0, 1843) for x in filtered_x_list]
-    print('After fifth gate %d remain in sample %s' %(filtered_x_list[idx].shape[0], idx))
+    print('After fifth gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list_leaf = [x for x in filtered_x_list]
+
+    return filtered_x_list_leaf
+
+
+def filter_cll_leaf_pb2(x_list):
+    """
+     :param x_list: list of numpy arrays per sample
+    :return: list of filtered numpy arrays per sample
+    """
+    idx = 3
+
+    filtered_x_list = [filter_slope(x, 0, 1, 2048, 4096, 2048, 2560) for x in x_list]
+    print('After first slope gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list = [filter_rectangle(x, 2, 3, 102, 921, 2048, 3891) for x in filtered_x_list]
+    print('After second gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list = [filter_rectangle(x, 0, 4, 921, 2150, 102, 921) for x in filtered_x_list]
+    print('After third gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list = [filter_rectangle(x, 5, 6, 1638, 3891, 2150, 3891) for x in filtered_x_list]
+    print('After fourth gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list = [filter_rectangle(x, 7, 8, 0, 1740, 614, 2252) for x in filtered_x_list]
+    print('After fifth gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
     filtered_x_list_leaf = [x for x in filtered_x_list]
 
     return filtered_x_list_leaf
@@ -140,15 +204,17 @@ def normalize_x_list(x_list, offset=None, scale=None):
     :param scale: a numpy array of shape (n_cell_featuers, )
     :return:
     """
+    n_features = x_list[0].shape[1]
     if offset == None or scale == None:
-        x_min = np.array([x.min(axis=0) for x in x_list]).min(axis=0)
-        x_max = np.array([x.max(axis=0) for x in x_list]).max(axis=0)
+        x_min = np.min(np.array([x.min(axis=0) if x.shape[0] > 0 else [np.nan] * n_features for x in x_list]), axis=0)
+        x_max = np.max(np.array([x.max(axis=0) if x.shape[0] > 0 else [np.nan] * n_features for x in x_list]), axis=0)
         offset = x_min
         scale = x_max - x_min
     normalized_x_list = [(x - offset) / scale for x in x_list]
     return normalized_x_list, offset, scale
 
-def normalize_x_list_multiple_panels(x_list, offset=None, scale=None):
+
+def normalize_x_list_multiple_panels(x_list):
     """
 
     :param x_list: a list of a list of numpy arrays, each numpy array is the fc measurements of one panel for one sample
@@ -191,6 +257,7 @@ def normalize_nested_tree(nested_tree, offset, scale, feature2id):
 
 
 if __name__ == '__main__':
-    x_list = [[np.array([[1,2],[3,4]]), np.array([[5,6],[7,8]])], [np.array([[1,2],[3,4]]), np.array([[5,6],[7,8]])]]
+    x_list = [[np.array([[1, 2], [3, 4]]), np.array([[5, 6], [7, 8]])],
+              [np.array([[1, 2], [3, 4]]), np.array([[5, 6], [7, 8]])]]
     print(x_list)
     print(normalize_x_list_multiple_panels(x_list))

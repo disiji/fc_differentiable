@@ -1,15 +1,21 @@
 import csv
 import os
+
 import yaml
+
 from train import *
+from utils.bayes_gate import ModelForest
+from utils.input import *
 
 default_hparams = {
     'logistic_k': 100,
     'logistic_k_dafi': 1000,
     'regularization_penalty': 0,
-    'emptyness_penalty': 1,
+    'negative_box_penalty': 0.1,
+    'positive_box_penalty': -0.1,
+    'corner_penalty': 10.0,
     'gate_size_penalty': 1,
-    'gate_size_default': 1. / 4,
+    'gate_size_default': (0.5, 0.5),
     'load_from_pickle': True,
     'dafi_init': False,
     'optimizer': "Adam",  # or Adam, SGD
@@ -18,12 +24,13 @@ default_hparams = {
     'n_mini_batch_update_gates': 50,
     'learning_rate_classifier': 0.05,
     'learning_rate_gates': 0.1,
-    'batch_size': 85,
-    'n_epoch': 500,
+    'batch_size': 10,
+    'n_epoch': 1000,
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
-    'n_run': 100,
+    'n_run': 1,
+    'train_alternate': True,
 }
 
 
@@ -45,40 +52,45 @@ def run_multiple_panel(yaml_filename, random_state_start=0):
             writer.writerow([key, val])
 
     cll_4d_2p_input = Cll4d2pInput(hparams)
+    print(cll_4d_2p_input.init_tree)
 
     for random_state in range(random_state_start, hparams['n_run']):
         hparams['random_state'] = random_state
         cll_4d_2p_input.split(random_state)
 
         model_forest = ModelForest(cll_4d_2p_input.reference_tree,
-                               logistic_k=hparams['logistic_k'],
-                               regularisation_penalty=hparams['regularization_penalty'],
-                               emptyness_penalty=hparams['emptyness_penalty'],
-                               gate_size_penalty=hparams['gate_size_penalty'],
-                               init_tree=cll_4d_2p_input.init_tree,
-                               loss_type=hparams['loss_type'],
-                               gate_size_default=hparams['gate_size_default'])
+                                   logistic_k=hparams['logistic_k'],
+                                   regularisation_penalty=hparams['regularization_penalty'],
+                                   negative_box_penalty=hparams['negative_box_penalty'],
+                                   positive_box_penalty=hparams['positive_box_penalty'],
+                                   corner_penalty=hparams['corner_penalty'],
+                                   gate_size_penalty=hparams['gate_size_penalty'],
+                                   init_tree_list=cll_4d_2p_input.init_tree,
+                                   loss_type=hparams['loss_type'],
+                                   gate_size_default=hparams['gate_size_default'])
 
         dafi_forest = ModelForest(cll_4d_2p_input.reference_tree,
-                              logistic_k=hparams['logistic_k_dafi'],
-                              regularisation_penalty=hparams['regularization_penalty'],
-                              emptyness_penalty=hparams['emptyness_penalty'],
-                              gate_size_penalty=hparams['gate_size_penalty'],
-                              init_tree=None,
-                              loss_type=hparams['loss_type'],
-                              gate_size_default=hparams['gate_size_default'])
+                                  logistic_k=hparams['logistic_k_dafi'],
+                                  regularisation_penalty=hparams['regularization_penalty'],
+                                  negative_box_penalty=hparams['negative_box_penalty'],
+                                  positive_box_penalty=hparams['positive_box_penalty'],
+                                  corner_penalty=hparams['corner_penalty'],
+                                  gate_size_penalty=hparams['gate_size_penalty'],
+                                  init_tree_list=[None] * 2,
+                                  loss_type=hparams['loss_type'],
+                                  gate_size_default=hparams['gate_size_default'])
 
         dafi_forest = run_train_dafi(dafi_forest, hparams, cll_4d_2p_input)
-        model_forest, train_tracker, eval_tracker, run_time = run_train_model(model_forest, hparams, cll_4d_2p_input)
+        model_forest, train_tracker, eval_tracker, run_time, checkpoints = run_train_model(model_forest, hparams, cll_4d_2p_input)
         output_metric_dict = run_output(
             model_forest, dafi_forest, hparams, cll_4d_2p_input, train_tracker, eval_tracker, run_time)
 
         # only plot once
         if not os.path.isfile('../output/%s/metrics.png' % hparams['experiment_name']):
             run_plot_metric(hparams, train_tracker, eval_tracker, dafi_forest, cll_4d_2p_input, output_metric_dict)
-            # run_plot_gates(hparams, train_tracker, eval_tracker, model_forest, dafi_forest, cll_4d_2p_input)
 
 
+#
 if __name__ == '__main__':
-    #run(sys.argv[1], int(sys.argv[2]))
-    run_multiple_panel("../configs/4d_2p_default.yaml", 0)
+    # run(sys.argv[1], int(sys.argv[2]))
+    run_multiple_panel("../configs/cll_4d_2p_dafi_init.yaml", 0)

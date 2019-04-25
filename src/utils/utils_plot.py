@@ -1,5 +1,9 @@
 import matplotlib
+
 matplotlib.use('Agg')
+matplotlib.rcParams['font.size'] = 10
+matplotlib.rcParams['font.family'] = 'serif'
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
@@ -59,8 +63,7 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
 def plot_metrics(x_range, train_tracker, eval_tracker, filename,
                  output_dafi_train=None,
                  output_dafi_eval=None,
-                 output_metric_dict = None):
-
+                 output_metric_dict=None):
     fig_metric, ax_metric = plt.subplots(nrows=4, ncols=2, figsize=(2 * 3, 4 * 2))
 
     ax_metric[0, 0].plot(x_range, train_tracker.loss)
@@ -99,7 +102,7 @@ def plot_metrics(x_range, train_tracker, eval_tracker, filename,
         ax_metric[1, 1].legend(["gate size reg"], prop={'size': 6})
     else:
         ax_metric[1, 1].plot(x_range, [output_dafi_train['size_reg_loss'] for _ in x_range])
-        ax_metric[1, 1].legend(["gate size reg-model", "gate size reg-DAFi"],prop={'size': 6})
+        ax_metric[1, 1].legend(["gate size reg-model", "gate size reg-DAFi"], prop={'size': 6})
 
     ax_metric[2, 0].plot(x_range, train_tracker.acc)
     ax_metric[2, 0].plot(x_range, eval_tracker.acc)
@@ -137,11 +140,9 @@ def plot_metrics(x_range, train_tracker, eval_tracker, filename,
     fig_metric.savefig(filename)
 
 
-def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, reference_tree,
-             train_tracker, eval_tracker,
-             model_pred, model_pred_prob, dafi_pred, dafi_pred_prob,
-             figname_root_pos, figname_root_neg, figname_leaf_pos, figname_leaf_neg):
-
+def plot_cll_1p(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, reference_tree,
+                train_tracker, model_pred, model_pred_prob, dafi_pred_prob,
+                figname_root_pos, figname_root_neg, figname_leaf_pos, figname_leaf_neg):
     fig_root_pos, ax_root_pos = plt.subplots(nrows=ceil(sum(y) / 5), ncols=5, figsize=(5 * 5, ceil(sum(y) / 5) * 3))
     fig_leaf_pos, ax_leaf_pos = plt.subplots(nrows=ceil(sum(y) / 5), ncols=5, figsize=(5 * 5, ceil(sum(y) / 5) * 3))
     fig_root_neg, ax_root_neg = plt.subplots(nrows=ceil((len(y) - sum(y)) / 5), ncols=5,
@@ -152,27 +153,32 @@ def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, refer
     idx_pos = 0
     idx_neg = 0
 
+    gate_root_init = train_tracker.model_init.root
+    for item in train_tracker.model_init.children_dict:
+        if len(train_tracker.model_init.children_dict[item]) > 0:
+            gate_leaf_init = train_tracker.model_init.children_dict[item][0]
+
     for sample_idx in range(len(normalized_x)):
 
         if y[sample_idx] == 1:
             ax_root_pos[idx_pos // 5, idx_pos % 5] = \
                 plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
-                           [train_tracker.root_gate_opt, eval_tracker.root_gate_opt, train_tracker.root_gate_init,
-                            reference_tree.gate, model_tree.root],
-                           ["opt on train", "opt on eval", "init",
+                           [gate_root_init,
+                            reference_tree.gate,
+                            model_tree.root],
+                           ["init",
                             "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
-                            "converge: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
+                            "Model: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
                            ax=ax_root_pos[idx_pos // 5, idx_pos % 5], filename=None, normalized=True)
             ax_leaf_pos[idx_pos // 5, idx_pos % 5] = \
                 plot_gates(filtered_normalized_x[sample_idx][:, 2],
                            filtered_normalized_x[sample_idx][:, 3],
-                           [train_tracker.leaf_gate_opt,
-                            eval_tracker.leaf_gate_opt,
-                            train_tracker.leaf_gate_init, reference_tree.children[0].gate,
+                           [gate_leaf_init,
+                            reference_tree.children[0].gate,
                             model_tree.children_dict[str(id(model_tree.root))][0]],
-                           ["opt on train", "opt on eval", "init",
+                           ["init",
                             "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
-                            "converge: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
+                            "Model: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
                            ax=ax_leaf_pos[idx_pos // 5, idx_pos % 5], filename=None, normalized=True)
             if model_pred[sample_idx] == 0:
                 rect_root_pos = patches.Rectangle((0, 0), 1, 1, linewidth=10, edgecolor='red', facecolor='none')
@@ -184,22 +190,22 @@ def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, refer
         else:
             ax_root_neg[idx_neg // 5, idx_neg % 5] = \
                 plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
-                           [train_tracker.root_gate_opt, eval_tracker.root_gate_opt, train_tracker.root_gate_init,
-                            reference_tree.gate, model_tree.root],
-                           ["opt on train", "opt on eval", "init",
+                           [gate_root_init,
+                            reference_tree.gate,
+                            model_tree.root],
+                           ["init",
                             "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
-                            "converge: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
+                            "Model: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
                            ax=ax_root_neg[idx_neg // 5, idx_neg % 5], filename=None, normalized=True)
             ax_leaf_neg[idx_neg // 5, idx_neg % 5] = \
                 plot_gates(filtered_normalized_x[sample_idx][:, 2],
                            filtered_normalized_x[sample_idx][:, 3],
-                           [train_tracker.leaf_gate_opt,
-                            eval_tracker.leaf_gate_opt,
-                            train_tracker.leaf_gate_init, reference_tree.children[0].gate,
+                           [gate_leaf_init,
+                            reference_tree.children[0].gate,
                             model_tree.children_dict[str(id(model_tree.root))][0]],
-                           ["opt on train", "opt on eval", "init",
+                           ["init",
                             "DAFi: p=%.3f" % dafi_pred_prob[sample_idx],
-                            "converge: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
+                            "Model: p=%.3f" % model_pred_prob[sample_idx]], FEATURES,
                            ax=ax_leaf_neg[idx_neg // 5, idx_neg % 5], filename=None, normalized=True)
             if model_pred[sample_idx] == 1:
                 rect_root_neg = patches.Rectangle((0, 0), 1, 1, linewidth=10, edgecolor='red', facecolor='none')
@@ -208,10 +214,71 @@ def plot_cll(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, refer
                 ax_leaf_neg[idx_neg // 5, idx_neg % 5].add_patch(rect_leaf_neg)
             idx_neg += 1
 
-    # fig_root_pos.tight_layout()
-    # fig_leaf_pos.tight_layout()
-    # fig_root_neg.tight_layout()
-    # fig_leaf_neg.tight_layout()
+    fig_root_pos.savefig(figname_root_pos)
+    fig_root_neg.savefig(figname_root_neg)
+    fig_leaf_pos.savefig(figname_leaf_pos)
+    fig_leaf_neg.savefig(figname_leaf_neg)
+
+
+def plot_cll_1p_light(normalized_x, filtered_normalized_x, y, FEATURES, model_tree, reference_tree,
+                      train_tracker, figname_root_pos, figname_root_neg, figname_leaf_pos, figname_leaf_neg):
+    fig_root_pos, ax_root_pos = plt.subplots(nrows=ceil(sum(y) / 5), ncols=5, figsize=(5 * 5, ceil(sum(y) / 5) * 3))
+    fig_leaf_pos, ax_leaf_pos = plt.subplots(nrows=ceil(sum(y) / 5), ncols=5, figsize=(5 * 5, ceil(sum(y) / 5) * 3))
+    fig_root_neg, ax_root_neg = plt.subplots(nrows=ceil((len(y) - sum(y)) / 5), ncols=5,
+                                             figsize=(5 * 5, ceil((len(y) - sum(y)) / 5) * 3))
+    fig_leaf_neg, ax_leaf_neg = plt.subplots(nrows=ceil((len(y) - sum(y)) / 5), ncols=5,
+                                             figsize=(5 * 5, ceil((len(y) - sum(y)) / 5) * 3))
+
+    idx_pos = 0
+    idx_neg = 0
+
+    gate_root_init = train_tracker.model_init.root
+    for item in train_tracker.model_init.children_dict:
+        if len(train_tracker.model_init.children_dict[item]) > 0:
+            gate_leaf_init = train_tracker.model_init.children_dict[item][0]
+
+    gate_root_model = model_tree.root
+    for item in model_tree.children_dict:
+        if len(model_tree.children_dict[item]) > 0:
+            gate_leaf_model = model_tree.children_dict[item][0]
+
+    for sample_idx in range(len(normalized_x)):
+
+        if y[sample_idx] == 1:
+            ax_root_pos[idx_pos // 5, idx_pos % 5] = \
+                plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
+                           [gate_root_init,
+                            reference_tree.gate,
+                            gate_root_model],
+                           ["init", "DAFi", "Model"], FEATURES,
+                           ax=ax_root_pos[idx_pos // 5, idx_pos % 5], filename=None, normalized=True)
+            ax_leaf_pos[idx_pos // 5, idx_pos % 5] = \
+                plot_gates(filtered_normalized_x[sample_idx][:, 2],
+                           filtered_normalized_x[sample_idx][:, 3],
+                           [gate_leaf_init,
+                            reference_tree.children[0].gate,
+                            gate_leaf_model],
+                           ["init", "DAFi", "Model"], FEATURES,
+                           ax=ax_leaf_pos[idx_pos // 5, idx_pos % 5], filename=None, normalized=True)
+            idx_pos += 1
+
+        else:
+            ax_root_neg[idx_neg // 5, idx_neg % 5] = \
+                plot_gates(normalized_x[sample_idx][:, 0], normalized_x[sample_idx][:, 1],
+                           [gate_root_init,
+                            reference_tree.gate,
+                            gate_root_model],
+                           ["init", "DAFi", "Model"], FEATURES,
+                           ax=ax_root_neg[idx_neg // 5, idx_neg % 5], filename=None, normalized=True)
+            ax_leaf_neg[idx_neg // 5, idx_neg % 5] = \
+                plot_gates(filtered_normalized_x[sample_idx][:, 2],
+                           filtered_normalized_x[sample_idx][:, 3],
+                           [gate_leaf_init,
+                            reference_tree.children[0].gate,
+                            gate_leaf_model],
+                           ["init", "DAFi", "Model"], FEATURES,
+                           ax=ax_leaf_neg[idx_neg // 5, idx_neg % 5], filename=None, normalized=True)
+            idx_neg += 1
 
     fig_root_pos.savefig(figname_root_pos)
     fig_root_neg.savefig(figname_root_neg)

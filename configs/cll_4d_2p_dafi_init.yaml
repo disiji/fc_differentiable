@@ -1,0 +1,3 @@
+experiment_name: 'cll_4d_2p_dafi_init'
+dafi_init: True
+train_alternate: False
