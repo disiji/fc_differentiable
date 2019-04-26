@@ -13,8 +13,8 @@ default_hparams = {
     'regularization_penalty': 0,
     'negative_box_penalty': 0.1,
     'positive_box_penalty': 0.0,
-    'corner_penalty': 0.0,
-    'gate_size_penalty': 1,
+    'corner_penalty': 1.0,
+    'gate_size_penalty': 0,
     'gate_size_default': (0.5, 0.5),
     'load_from_pickle': True,
     'dafi_init': False,
@@ -25,11 +25,11 @@ default_hparams = {
     'learning_rate_classifier': 0.05,
     'learning_rate_gates': 0.05,
     'batch_size': 10,
-    'n_epoch': 300,
+    'n_epoch': 500,
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
-    'n_run': 100,
+    'n_run': 10,
     'train_alternate': True
 }
 
@@ -92,10 +92,11 @@ def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True)
         run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
         run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
         run_write_prediction(model_tree, dafi_tree, cll_4d_input, hparams)
-        run_gate_motion(hparams, cll_4d_input, model_checkpoint_dict, train_tracker)
+        # run_gate_motion(hparams, cll_4d_input, model_checkpoint_dict, train_tracker)
+        run_gate_motion_in_one_figure(hparams, cll_4d_input, model_checkpoint_dict, train_tracker)
         model_checkpoint = False
 
 
 if __name__ == '__main__':
     # run_single_panel(sys.argv[1], int(sys.argv[2]), True)
-    run_single_panel("../configs/cll_4d_1p_gate_size_regularization_off_emp_reg_1.yaml", 0, True)
+    run_single_panel("../configs/test.yaml", 0, True)
