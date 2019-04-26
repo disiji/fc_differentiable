@@ -2,7 +2,7 @@ from random import shuffle
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 import numpy as np
-from utils.bayes_gate_pytorch import *
+from misc.bayes_gate_pytorch import *
 import utils.utils_load_data as dh
 from sklearn.model_selection import train_test_split
 import torch
@@ -22,7 +22,7 @@ if __name__ == '__main__':
 
     # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
     # y: a list of labels; 1 is CLL, 0 is healthy
-    x, y = dh.load_cll_data(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, FEATURES)
+    x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, FEATURES)
     # remove cells that were filtered by the slope gate
     filtered_x = dh.filter_cll(x)
     x_train, x_eval, y_train, y_eval = train_test_split(x, y, test_size=0.33, random_state=42)

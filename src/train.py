@@ -257,7 +257,7 @@ def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, 
 
 
 def run_gate_motion(hparams, input, model_checkpoint_dict, train_tracker, n_samples_plot=20):
-    # select 4 samples for plotting
+    # select 10 samples for plotting
     idx_pos = [i for i in range(len(input.y)) if input.y[i] == 1][:(n_samples_plot // 2)]
     idx_neg = [i for i in range(len(input.y)) if input.y[i] == 0][:(n_samples_plot // 2)]
     idx_mask = sorted(idx_pos + idx_neg)
@@ -277,6 +277,14 @@ def run_gate_motion(hparams, input, model_checkpoint_dict, train_tracker, n_samp
                                     input.reference_tree,
                                     train_tracker, filename_root_pas, filename_root_neg, filename_leaf_pas,
                                     filename_leaf_neg)
+
+def run_gate_motion_in_one_figure(hparams, input, model_checkpoint_dict, train_tracker):
+
+    filename = "../output/%s/gate_motion.png" % hparams['experiment_name']
+    # select checkpoints to plot, limit the length to 4
+    epoch_list = [100, 200, 300, 400]
+    util_plot.plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filename)
+
 
 
 def run_write_prediction(model_tree, dafi_tree, input, hparams):

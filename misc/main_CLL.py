@@ -2,7 +2,7 @@ from random import shuffle
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 import numpy as np
-from utils.bayes_gate_pytorch_sigmoid_trans import *
+from utils.bayes_gate import *
 import utils.utils_load_data as dh
 from sklearn.model_selection import train_test_split
 import time
@@ -44,7 +44,7 @@ if __name__ == '__main__':
         with open(DATA_DIR + 'y_list.pkl', 'rb') as f:
             y = pickle.load(f)
     else:
-        x, y = dh.load_cll_data(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, FEATURES)
+        x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, FEATURES)
         x = dh.filter_cll(x)
         with open(DATA_DIR + 'filtered_cll_x_list.pkl', 'wb') as f:
             pickle.dump(x, f)

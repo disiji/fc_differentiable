@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 import torch.nn.functional as F
+import torch
 from math import *
+import utils.utils_load_data as dh
 
 
 def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, normalized=True):
@@ -284,3 +286,73 @@ def plot_cll_1p_light(normalized_x, filtered_normalized_x, y, FEATURES, model_tr
     fig_root_neg.savefig(figname_root_neg)
     fig_leaf_pos.savefig(figname_leaf_pos)
     fig_leaf_neg.savefig(figname_leaf_neg)
+
+
+def plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filename):
+    # data to plot on
+    input_x_pos = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 1], dim=0)
+    input_x_pos_subsample = input_x_pos[torch.randperm(input_x_pos.size()[0])][:10_000]
+    filtered_input_x_pos = dh.filter_rectangle(input_x_pos_subsample, 0, 1, 0.402, 0.955, 0.549, 0.99)
+    input_x_neg = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 0], dim=0)
+    input_x_neg_subsample = input_x_neg[torch.randperm(input_x_neg.size()[0])][:10_000]
+    filtered_input_x_neg = dh.filter_rectangle(input_x_neg_subsample, 0, 1, 0.402, 0.955, 0.549, 0.99)
+
+    gate_root_init = train_tracker.model_init.root
+    for item in train_tracker.model_init.children_dict:
+        if len(train_tracker.model_init.children_dict[item]) > 0:
+            gate_leaf_init = train_tracker.model_init.children_dict[item][0]
+    gate_root_ref = input.reference_tree.gate
+    gate_leaf_ref = input.reference_tree.children[0].gate
+
+    fig, axarr = plt.subplots(nrows=4, ncols=4, figsize=(10,10), sharex=True, sharey=True)
+
+    # plot the first row: positive root
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        gate_root_model = model_tree.root
+        axarr[0, idx] = plot_gates(input_x_pos_subsample[:, 0], input_x_pos_subsample[:, 1],
+                                   [gate_root_init, gate_root_ref, gate_root_model],
+                                   ["init", "DAFi", "Model"], input.features,
+                                   ax=axarr[0, idx], filename=None, normalized=True)
+    axarr[0, 0].set_ylabel("Positive Root")
+
+    # plot the second row: positive leaf
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        for item in model_tree.children_dict:
+            if len(model_tree.children_dict[item]) > 0:
+                gate_leaf_model = model_tree.children_dict[item][0]
+        axarr[1, idx] = plot_gates(filtered_input_x_pos[:, 2], filtered_input_x_pos[:, 3],
+                                   [gate_leaf_init, gate_leaf_ref, gate_leaf_model],
+                                   ["init", "DAFi", "Model"], input.features,
+                                   ax=axarr[1, idx], filename=None, normalized=True)
+    axarr[1, 0].set_ylabel("Positive Leaf")
+
+    # plot the third row: negative root
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        gate_root_model = model_tree.root
+        axarr[2, idx] = plot_gates(input_x_neg_subsample[:, 0], input_x_neg_subsample[:, 1],
+                                   [gate_root_init, gate_root_ref, gate_root_model],
+                                   ["init", "DAFi", "Model"], input.features,
+                                   ax=axarr[2, idx], filename=None, normalized=True)
+    axarr[2, 0].set_ylabel("Negative Root")
+
+    # plot the fourth row: negative leaf
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        for item in model_tree.children_dict:
+            if len(model_tree.children_dict[item]) > 0:
+                gate_leaf_model = model_tree.children_dict[item][0]
+        axarr[3, idx] = plot_gates(filtered_input_x_neg[:, 2], filtered_input_x_neg[:, 3],
+                                   [gate_leaf_init, gate_leaf_ref, gate_leaf_model],
+                                   ["init", "DAFi", "Model"], input.features,
+                                   ax=axarr[3, idx], filename=None, normalized=True)
+        axarr[3, idx].set_xlabel("Iterations: %d" % epoch)
+    axarr[3, 0].set_ylabel("Negative Leaf")
+
+    fig.savefig(filename)
