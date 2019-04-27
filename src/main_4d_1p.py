@@ -14,7 +14,7 @@ default_hparams = {
     'negative_box_penalty': 0.1,
     'positive_box_penalty': 0.0,
     'corner_penalty': 1.0,
-    'gate_size_penalty': 0,
+    'gate_size_penalty': 1,
     'gate_size_default': (0.5, 0.5),
     'load_from_pickle': True,
     'dafi_init': False,
@@ -81,7 +81,7 @@ def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True)
                               loss_type=hparams['loss_type'],
                               gate_size_default=hparams['gate_size_default'])
 
-        dafi_tree = run_train_dafi(dafi_tree, hparams, cll_4d_input)
+        # dafi_tree = run_train_dafi(dafi_tree, hparams, cll_4d_input)
         model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \
             run_train_model(model_tree, hparams, cll_4d_input, model_checkpoint=model_checkpoint)
         output_metric_dict = run_output(
@@ -93,8 +93,10 @@ def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True)
         run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
         run_write_prediction(model_tree, dafi_tree, cll_4d_input, hparams)
         # run_gate_motion(hparams, cll_4d_input, model_checkpoint_dict, train_tracker)
+        print(model_checkpoint)
+        print(model_checkpoint_dict)
         run_gate_motion_in_one_figure(hparams, cll_4d_input, model_checkpoint_dict, train_tracker)
-        model_checkpoint = False
+        # model_checkpoint = False
 
 
 if __name__ == '__main__':

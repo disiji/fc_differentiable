@@ -123,7 +123,7 @@ class ModelNode(nn.Module):
                           + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
         size_reg_penalty = (abs(gate_upp1 - gate_low1) - self.gate_size_default[0]) ** 2 + \
                            (abs(gate_upp2 - gate_low2) - self.gate_size_default[1]) ** 2
-        corner_reg_penalty = torch.rsqrt(torch.min(torch.tensor([gate_low1 ** 2 + gate_low2 ** 2,
+        corner_reg_penalty = torch.sqrt(torch.min(torch.tensor([gate_low1 ** 2 + gate_low2 ** 2,
                                                                  gate_low1 ** 2 + (1 - gate_upp2) ** 2,
                                                                  (1 - gate_upp1) ** 2 + gate_low2 ** 2,
                                                                  (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2])))
@@ -208,8 +208,8 @@ class ModelTree(nn.Module):
                   'ref_reg_loss': 0,
                   'size_reg_loss': 0,
                   'emp_reg_loss': 0,
+                  'corner_reg_loss': 0,
                   'log_loss': None,
-                  'corner_loss': 0,
                   'loss': None
                   }
 
@@ -226,7 +226,7 @@ class ModelTree(nn.Module):
                     logp, ref_reg_penalty, size_reg_penalty, corner_reg_penalty = node(x[sample_idx])
                     output['ref_reg_loss'] += ref_reg_penalty * self.regularisation_penalty / len(x)
                     output['size_reg_loss'] += size_reg_penalty * self.gate_size_penalty / len(x)
-                    output['corner_loss'] += corner_reg_penalty * self.corner_penalty / len(x)
+                    output['corner_reg_loss'] += corner_reg_penalty * self.corner_penalty / len(x)
                     pathlogp = pathlogp + logp
                     if len(self.children_dict[str(id(node))]) > 0:
                         for child_node in self.children_dict[str(id(node))]:
@@ -235,7 +235,7 @@ class ModelTree(nn.Module):
                         leaf_probs[sample_idx, leaf_idx] = pathlogp.exp().sum(dim=0) / x[sample_idx].shape[0]
                 this_level = next_level
 
-        loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_loss']
+        loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss']
 
         output['leaf_probs'] = leaf_probs
         output['leaf_logp'] = torch.log(leaf_probs)
@@ -251,7 +251,6 @@ class ModelTree(nn.Module):
                     output['log_loss'] = self.criterion(output['y_pred'], y)
                 loss = loss + output['log_loss']
             # add regularization on the number of cells fall into the leaf gate of negative samples;
-            # todo: replace this part of implementation by adding an attribute in class "Gate" to handle more genreal cases
             for sample_idx in range(len(y)):
                 if y[sample_idx] == 0:
                     output['emp_reg_loss'] = output['emp_reg_loss'] + self.negative_box_penalty * \
@@ -260,7 +259,6 @@ class ModelTree(nn.Module):
                     output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
                                              output['leaf_probs'][sample_idx][0] / sum(y)
 
-        # todo: implement corner_loss
         output['loss'] = loss + output['emp_reg_loss']
 
         return output
@@ -340,7 +338,7 @@ class ModelForest(nn.Module):
                   'size_reg_loss': 0,
                   'emp_reg_loss': 0,
                   'log_loss': None,
-                  'corner_loss': 0,
+                  'corner_reg_loss': 0,
                   'loss': None
                   }
 
@@ -356,7 +354,7 @@ class ModelForest(nn.Module):
             feature_counter += n_panel_features
             output['ref_reg_loss'] += output_panel['ref_reg_loss']
             output['size_reg_loss'] += output_panel['size_reg_loss']
-            output['corner_loss'] + output_panel['corner_loss']
+            output['corner_reg_loss'] + output_panel['corner_reg_loss']
 
         output['leaf_logp'] = torch.log(output['leaf_probs'])
         output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
@@ -374,6 +372,6 @@ class ModelForest(nn.Module):
                     output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
                                              output['leaf_probs'][sample_idx][0] / sum(y)
             output['loss'] = output['ref_reg_loss'] + output['size_reg_loss'] + \
-                             output['emp_reg_loss'] + output['log_loss'] + output['corner_loss']
+                             output['emp_reg_loss'] + output['log_loss'] + output['corner_reg_loss']
 
         return output
