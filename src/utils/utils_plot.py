@@ -31,7 +31,8 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
     # Add scatter plot
     ax.scatter(x1, x2, s=1)
     n_gates = len(gates)
-    colors = ["red", "orange", "green", "blue", "purple", "yellow", "black"]
+    colors = ["red", "black", "red", "blue", "purple"]
+    linestyles = ['dashed', 'solid', 'solid', 'solid', 'solid']
 
     for i in range(n_gates):
         dim1 = gates[i].gate_dim1
@@ -47,8 +48,9 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
             gate_upp1 = gates[i].gate_upp1
             gate_upp2 = gates[i].gate_upp2
         # Create a Rectangle patch
-        rect = patches.Rectangle((gate_low1, gate_low2), gate_upp1 - gate_low1, gate_upp2 - gate_low2, linewidth=2,
-                                 edgecolor=colors[i], facecolor='none', label=gate_names[i], alpha=0.5)
+        rect = patches.Rectangle((gate_low1, gate_low2), gate_upp1 - gate_low1, gate_upp2 - gate_low2,
+                                 edgecolor=colors[i], linestyle=linestyles[i],
+                                 facecolor='none', label=gate_names[i], linewidth=3,)
         # Add the patch to the Axes
         ax.add_patch(rect)
     ax.set_xlabel(id2feature[dim1])
@@ -66,7 +68,7 @@ def plot_metrics(x_range, train_tracker, eval_tracker, filename,
                  output_dafi_train=None,
                  output_dafi_eval=None,
                  output_metric_dict=None):
-    fig_metric, ax_metric = plt.subplots(nrows=4, ncols=2, figsize=(2 * 3, 4 * 2))
+    fig_metric, ax_metric = plt.subplots(nrows=5, ncols=2, figsize=(2 * 3, 5 * 2))
 
     ax_metric[0, 0].plot(x_range, train_tracker.loss)
     ax_metric[0, 0].plot(x_range, eval_tracker.loss)
@@ -137,6 +139,14 @@ def plot_metrics(x_range, train_tracker, eval_tracker, filename,
     ax_metric[3, 1].plot(x_range, train_tracker.log_decision_boundary)
     ax_metric[3, 1].set_xlabel("#Epoch")
     ax_metric[3, 1].legend(["log decision boundary"], prop={'size': 6})
+
+    ax_metric[4, 0].plot(x_range, train_tracker.corner_reg_loss)
+    ax_metric[4, 0].set_xlabel("#Epoch")
+    if output_dafi_train == None:
+        ax_metric[4, 0].legend(["corner distance reg"], prop={'size': 6})
+    else:
+        ax_metric[4, 0].plot(x_range, [output_dafi_train['corner_reg_loss'] for _ in x_range])
+        ax_metric[4, 0].legend(["corner distance reg-model", "corner distance reg-DAFi"], prop={'size': 6})
 
     fig_metric.tight_layout()
     fig_metric.savefig(filename)
@@ -292,10 +302,8 @@ def plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filenam
     # data to plot on
     input_x_pos = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 1], dim=0)
     input_x_pos_subsample = input_x_pos[torch.randperm(input_x_pos.size()[0])][:10_000]
-    filtered_input_x_pos = dh.filter_rectangle(input_x_pos_subsample, 0, 1, 0.402, 0.955, 0.549, 0.99)
     input_x_neg = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 0], dim=0)
     input_x_neg_subsample = input_x_neg[torch.randperm(input_x_neg.size()[0])][:10_000]
-    filtered_input_x_neg = dh.filter_rectangle(input_x_neg_subsample, 0, 1, 0.402, 0.955, 0.549, 0.99)
 
     gate_root_init = train_tracker.model_init.root
     for item in train_tracker.model_init.children_dict:
@@ -321,6 +329,11 @@ def plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filenam
     for idx, epoch in enumerate(epoch_list):
         # find model gates to plot
         model_tree = model_checkpoint_dict[epoch]
+        filtered_input_x_pos = dh.filter_rectangle(input_x_pos_subsample, 0, 1,
+                                                   F.sigmoid(model_tree.root.gate_low1_param),
+                                                   F.sigmoid(model_tree.root.gate_upp1_param),
+                                                   F.sigmoid(model_tree.root.gate_low2_param),
+                                                   F.sigmoid(model_tree.root.gate_upp2_param))
         for item in model_tree.children_dict:
             if len(model_tree.children_dict[item]) > 0:
                 gate_leaf_model = model_tree.children_dict[item][0]
@@ -345,6 +358,11 @@ def plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filenam
     for idx, epoch in enumerate(epoch_list):
         # find model gates to plot
         model_tree = model_checkpoint_dict[epoch]
+        filtered_input_x_neg = dh.filter_rectangle(input_x_neg_subsample, 0, 1,
+                                                   F.sigmoid(model_tree.root.gate_low1_param),
+                                                   F.sigmoid(model_tree.root.gate_upp1_param),
+                                                   F.sigmoid(model_tree.root.gate_low2_param),
+                                                   F.sigmoid(model_tree.root.gate_upp2_param))
         for item in model_tree.children_dict:
             if len(model_tree.children_dict[item]) > 0:
                 gate_leaf_model = model_tree.children_dict[item][0]

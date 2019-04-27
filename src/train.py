@@ -110,11 +110,13 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
                 epoch, i, train_tracker.ref_reg_loss[-1], eval_tracker.ref_reg_loss[-1]))
             print('[Epoch %d, batch %d] training, eval size_reg_loss: %.3f, %.3f' % (
                 epoch, i, train_tracker.size_reg_loss[-1], eval_tracker.size_reg_loss[-1]))
+            print('[Epoch %d, batch %d] training, eval corner_reg_loss: %.3f, %.3f' % (
+                epoch, i, train_tracker.corner_reg_loss[-1], eval_tracker.corner_reg_loss[-1]))
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
                 epoch, i, train_tracker.acc[-1], eval_tracker.acc[-1]))
 
         if model_checkpoint:
-            if epoch % (hparams['n_epoch'] // 10) == 0:
+            if epoch in [100, 200, 300, 400]:
                 model_checkpoint_dict[epoch] = deepcopy(model)
 
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))

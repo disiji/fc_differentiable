@@ -13,6 +13,7 @@ class Tracker():
         self.log_loss = []
         self.ref_reg_loss = []
         self.size_reg_loss = []
+        self.corner_reg_loss = []
         self.acc = []
         self.precision = []
         self.recall = []
@@ -30,6 +31,7 @@ class Tracker():
         self.log_loss.append(output['log_loss'])
         self.ref_reg_loss.append(output['ref_reg_loss'])
         self.size_reg_loss.append(output['size_reg_loss'])
+        self.corner_reg_loss.append(output['corner_reg_loss'])
         self.acc.append(sum(y_pred == y_true.numpy()) * 1.0 / y_true.shape[0])
         self.precision.append(precision_score(y_true.numpy(), y_pred, average='macro'))
         self.recall.append(recall_score(y_true.numpy(), y_pred, average='macro'))
