@@ -94,9 +94,7 @@ class Cll4dInput(CLLInputBase):
             ]
 
     def _get_init_nested_list_(self):
-        self.init_nested_list = [
-            [[u'CD38', 0.0., 500.], [u'CD20', 100., 1400.]],
-            [
+        self.init_nested_list = [ \
                 [[u'CD5', 1019., 3056.], [u'CD19', 979., 2937.]],
                 [
                     [
@@ -105,7 +103,7 @@ class Cll4dInput(CLLInputBase):
                     ]
                 ]
             ]
-        ]
+        
 
     def _normalize_(self):
         self.x_list, offset, scale = dh.normalize_x_list(self.x_list)

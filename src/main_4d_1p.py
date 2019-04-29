@@ -89,8 +89,8 @@ def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True)
 
         # only plot once
         # if not os.path.isfile('../output/%s/metrics.png' % hparams['experiment_name']) and plot_and_write_output:
-        run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
-        run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
+        #run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
+        #run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
         run_write_prediction(model_tree, dafi_tree, cll_4d_input, hparams)
         # run_gate_motion(hparams, cll_4d_input, model_checkpoint_dict, train_tracker)
         print(model_checkpoint)
@@ -101,4 +101,4 @@ def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True)
 
 if __name__ == '__main__':
     # run_single_panel(sys.argv[1], int(sys.argv[2]), True)
-    run_single_panel("../configs/test.yaml", 0, True)
+    run_single_panel("../configs/cll_4d_1p_neg_box_and_corner.yaml", 0, True)
