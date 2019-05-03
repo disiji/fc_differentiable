@@ -233,6 +233,7 @@ class ModelTree(nn.Module):
                             next_level.append((child_node, pathlogp))
                     else:
                         leaf_probs[sample_idx, leaf_idx] = pathlogp.exp().sum(dim=0) / x[sample_idx].shape[0]
+                        leaf_idx += 1
                 this_level = next_level
 
         loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss']

@@ -14,22 +14,22 @@ default_hparams = {
     'negative_box_penalty': 0.1,
     'positive_box_penalty': 0.0,
     'corner_penalty': 1.0,
-    'gate_size_penalty': 1,
+    'gate_size_penalty': 1.0,
     'gate_size_default': (0.5, 0.5),
     'load_from_pickle': True,
     'dafi_init': False,
     'optimizer': "Adam",  # or Adam, SGD
     'loss_type': 'logistic',  # or MSE
-    'n_epoch_eval': 20,
+    'n_epoch_eval': 100,
     'n_mini_batch_update_gates': 50,
     'learning_rate_classifier': 0.05,
     'learning_rate_gates': 0.05,
     'batch_size': 10,
-    'n_epoch': 500,
+    'n_epoch': 1000,
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
-    'n_run': 10,
+    'n_run': 100,
     'train_alternate': True
 }
 
@@ -88,17 +88,14 @@ def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True)
             model_tree, dafi_tree, hparams, cll_4d_input, train_tracker, eval_tracker, run_time)
 
         # only plot once
-        # if not os.path.isfile('../output/%s/metrics.png' % hparams['experiment_name']) and plot_and_write_output:
-        run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
-        run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
+        # # if not os.path.isfile('../output/%s/metrics.png' % hparams['experiment_name']) and plot_and_write_output:
+        # run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
+        # run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
         run_write_prediction(model_tree, dafi_tree, cll_4d_input, hparams)
-        # run_gate_motion(hparams, cll_4d_input, model_checkpoint_dict, train_tracker)
-        print(model_checkpoint)
-        print(model_checkpoint_dict)
-        run_gate_motion_in_one_figure(hparams, cll_4d_input, model_checkpoint_dict, train_tracker)
+        run_gate_motion_in_one_figure(hparams, cll_4d_input, model_checkpoint_dict)
         # model_checkpoint = False
 
 
 if __name__ == '__main__':
     # run_single_panel(sys.argv[1], int(sys.argv[2]), True)
-    run_single_panel("../configs/test.yaml", 0, True)
+    run_single_panel("../configs/test.yaml", 1, True)

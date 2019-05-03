@@ -73,6 +73,9 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
     eval_tracker.model_init = deepcopy(model)
     model_checkpoint_dict = {}
 
+    if model_checkpoint:
+        model_checkpoint_dict[0] = deepcopy(model)
+
     for epoch in range(hparams['n_epoch']):
         # shuffle training data
         idx_shuffle = np.array([i for i in range(len(input.x_train))])
@@ -100,6 +103,9 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
         # print every n_batch_print mini-batches
         if epoch % hparams['n_epoch_eval'] == 0:
             # stats on train
+            print(epoch)
+            print(model)
+            print(model(input.x_train, input.y_train)['y_pred'].detach().numpy())
             train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, i)
             eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, i)
 
@@ -116,8 +122,8 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
                 epoch, i, train_tracker.acc[-1], eval_tracker.acc[-1]))
 
         if model_checkpoint:
-            if epoch in [100, 200, 300, 400]:
-                model_checkpoint_dict[epoch] = deepcopy(model)
+            if epoch+1 in [100, 300, 500, 1000, 1500, 2000]:#[100, 200, 300, 400, 500, 600]:
+                model_checkpoint_dict[epoch+1] = deepcopy(model)
 
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))
     print("Optimal acc on train and eval during training process: %.3f at [Epoch %d, batch %d] "
@@ -141,31 +147,37 @@ def run_output(model, dafi_tree, hparams, input, train_tracker, eval_tracker, ru
     :param run_time:
     :return:
     """
-    y_pred_train = (model(input.x_train, input.y_train)['y_pred'].detach().numpy() > 0.5) * 1.0
-    y_pred_eval = (model(input.x_eval, input.y_eval)['y_pred'].detach().numpy() > 0.5) * 1.0
-    y_pred = (model(input.x, input.y)['y_pred'].detach().numpy() > 0.5) * 1.0
+    y_score_train = model(input.x_train, input.y_train)['y_pred'].detach().numpy()
+    y_score_eval = model(input.x_eval, input.y_eval)['y_pred'].detach().numpy()
+    y_score = model(input.x, input.y)['y_pred'].detach().numpy()
+    y_pred_train = (y_score_train > 0.5) * 1.0
+    y_pred_eval = (y_score_eval > 0.5) * 1.0
+    y_pred = (y_score > 0.5) * 1.0
     train_accuracy = sum(y_pred_train == input.y_train.numpy()) * 1.0 / len(input.x_train)
     eval_accuracy = sum(y_pred_eval == input.y_eval.numpy()) * 1.0 / len(input.x_eval)
     overall_accuracy = sum(y_pred == input.y.numpy()) * 1.0 / len(input.x)
     train_auc = roc_auc_score(input.y_train.numpy(), y_pred_train, average='macro')
     eval_auc = roc_auc_score(input.y_eval.numpy(), y_pred_eval, average='macro')
     overall_auc = roc_auc_score(input.y.numpy(), y_pred, average='macro')
-    train_brier_score = brier_score_loss(input.y_train.numpy(), y_pred_train)
-    eval_brier_score = brier_score_loss(input.y_eval.numpy(), y_pred_eval)
-    overall_brier_score = brier_score_loss(input.y.numpy(), y_pred)
+    train_brier_score = brier_score_loss(input.y_train.numpy(), y_score_train)
+    eval_brier_score = brier_score_loss(input.y_eval.numpy(), y_score_eval)
+    overall_brier_score = brier_score_loss(input.y.numpy(), y_score)
 
-    y_pred_train_dafi = (dafi_tree(input.x_train, input.y_train)['y_pred'].detach().numpy() > 0.5) * 1.0
-    y_pred_eval_dafi = (dafi_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy() > 0.5) * 1.0
-    y_pred_dafi = (dafi_tree(input.x, input.y)['y_pred'].detach().numpy() > 0.5) * 1.0
+    y_score_train_dafi = dafi_tree(input.x_train, input.y_train)['y_pred'].detach().numpy()
+    y_score_eval_dafi = dafi_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy()
+    y_score_dafi = dafi_tree(input.x, input.y)['y_pred'].detach().numpy()
+    y_pred_train_dafi = (y_score_train_dafi > 0.5) * 1.0
+    y_pred_eval_dafi = (y_score_eval_dafi > 0.5) * 1.0
+    y_pred_dafi = (y_score_dafi > 0.5) * 1.0
     train_accuracy_dafi = sum(y_pred_train_dafi == input.y_train.numpy()) * 1.0 / len(input.x_train)
     eval_accuracy_dafi = sum(y_pred_eval_dafi == input.y_eval.numpy()) * 1.0 / len(input.x_eval)
     overall_accuracy_dafi = sum(y_pred_dafi == input.y.numpy()) * 1.0 / len(input.x)
     train_auc_dafi = roc_auc_score(input.y_train.numpy(), y_pred_train_dafi, average='macro')
     eval_auc_dafi = roc_auc_score(input.y_eval.numpy(), y_pred_eval_dafi, average='macro')
     overall_auc_dafi = roc_auc_score(input.y.numpy(), y_pred_dafi, average='macro')
-    train_brier_score_dafi = brier_score_loss(input.y_train.numpy(), y_pred_train_dafi)
-    eval_brier_score_dafi = brier_score_loss(input.y_eval.numpy(), y_pred_eval_dafi)
-    overall_brier_score_dafi = brier_score_loss(input.y.numpy(), y_pred_dafi)
+    train_brier_score_dafi = brier_score_loss(input.y_train.numpy(), y_score_train_dafi)
+    eval_brier_score_dafi = brier_score_loss(input.y_eval.numpy(), y_score_eval_dafi)
+    overall_brier_score_dafi = brier_score_loss(input.y.numpy(), y_score_dafi)
 
     with open('../output/%s/results_cll_4D.csv' % hparams['experiment_name'], "a+") as file:
         file.write(
@@ -274,18 +286,23 @@ def run_gate_motion(hparams, input, model_checkpoint_dict, train_tracker, n_samp
         filename_leaf_neg = "../output/%s/gate_motion_leaf_neg_epoch%d.png" % (hparams['experiment_name'], epoch)
 
         # filter out samples according DAFI gate at root for visualization at leaf
-        filtered_normalized_x = [dh.filter_rectangle(x, 0, 1, 0.402, 0.955, 0.549, 0.99) for x in input.x]
+        #filtered_normalized_x = [dh.filter_rectangle(x, 0, 1, 0.402, 0.955, 0.549, 0.99) for x in input.x]
+        filtered_normalized_x = [dh.filter_rectangle(x, 0, 1,
+                                           F.sigmoid(model_tree.root.gate_low1_param),
+                                           F.sigmoid(model_tree.root.gate_upp1_param),
+                                           F.sigmoid(model_tree.root.gate_low2_param),
+                                           F.sigmoid(model_tree.root.gate_upp2_param)) for x in input.x]
         util_plot.plot_cll_1p_light(input.x, filtered_normalized_x, input.y, input.features, model_tree,
                                     input.reference_tree,
                                     train_tracker, filename_root_pas, filename_root_neg, filename_leaf_pas,
                                     filename_leaf_neg)
 
-def run_gate_motion_in_one_figure(hparams, input, model_checkpoint_dict, train_tracker):
+def run_gate_motion_in_one_figure(hparams, input, model_checkpoint_dict):
 
     filename = "../output/%s/gate_motion.png" % hparams['experiment_name']
     # select checkpoints to plot, limit the length to 4
-    epoch_list = [100, 200, 300, 400]
-    util_plot.plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filename)
+    epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]#[100, 200, 300, 400, 500, 600]
+    util_plot.plot_motion(input, epoch_list, model_checkpoint_dict, filename)
 
 
 
@@ -302,3 +319,16 @@ def run_write_prediction(model_tree, dafi_tree, input, hparams):
                dafi_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy())
     np.savetxt("../output/%s/predictions_dafi_whole.csv" % (hparams['experiment_name']),
                dafi_tree(input.x, input.y)['y_pred'].detach().numpy())
+
+    np.savetxt("../output/%s/features_model_train.csv" % (hparams['experiment_name']),
+               model_tree(input.x_train, input.y_train)['leaf_probs'].detach().numpy())
+    np.savetxt("../output/%s/features_model_test.csv" % (hparams['experiment_name']),
+               model_tree(input.x_eval, input.y_eval)['leaf_probs'].detach().numpy())
+    np.savetxt("../output/%s/features_model_whole.csv" % (hparams['experiment_name']),
+               model_tree(input.x, input.y)['leaf_probs'].detach().numpy())
+    np.savetxt("../output/%s/features_dafi_train.csv" % (hparams['experiment_name']),
+               dafi_tree(input.x_train, input.y_train)['leaf_probs'].detach().numpy())
+    np.savetxt("../output/%s/features_dafi_test.csv" % (hparams['experiment_name']),
+               dafi_tree(input.x_eval, input.y_eval)['leaf_probs'].detach().numpy())
+    np.savetxt("../output/%s/features_dafi_whole.csv" % (hparams['experiment_name']),
+               dafi_tree(input.x, input.y)['leaf_probs'].detach().numpy())

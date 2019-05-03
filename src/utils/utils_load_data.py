@@ -206,8 +206,10 @@ def normalize_x_list(x_list, offset=None, scale=None):
     """
     n_features = x_list[0].shape[1]
     if offset == None or scale == None:
-        x_min = np.min(np.array([x.min(axis=0) if x.shape[0] > 0 else [np.nan] * n_features for x in x_list]), axis=0)
-        x_max = np.max(np.array([x.max(axis=0) if x.shape[0] > 0 else [np.nan] * n_features for x in x_list]), axis=0)
+        x_min = np.min(np.array([x.min(axis=0) if x.shape[0] > 0
+                                 else [np.nan] * n_features for x in x_list]), axis=0)
+        x_max = np.max(np.array([x.max(axis=0) if x.shape[0] > 0
+                                 else [np.nan] * n_features for x in x_list]), axis=0)
         offset = x_min
         scale = x_max - x_min
     normalized_x_list = [(x - offset) / scale for x in x_list]

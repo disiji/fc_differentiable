@@ -12,7 +12,7 @@ default_hparams = {
     'logistic_k_dafi': 1000,
     'regularization_penalty': 0,
     'negative_box_penalty': 0.1,
-    'positive_box_penalty': -0.1,
+    'positive_box_penalty': 0,
     'corner_penalty': 10.0,
     'gate_size_penalty': 1,
     'gate_size_default': (0.5, 0.5),
@@ -34,7 +34,7 @@ default_hparams = {
 }
 
 
-def run_multiple_panel(yaml_filename, random_state_start=0):
+def run_multiple_panel(yaml_filename, random_state_start=0, model_checkpoint=True):
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
@@ -52,7 +52,6 @@ def run_multiple_panel(yaml_filename, random_state_start=0):
             writer.writerow([key, val])
 
     cll_4d_2p_input = Cll4d2pInput(hparams)
-    print(cll_4d_2p_input.init_tree)
 
     for random_state in range(random_state_start, hparams['n_run']):
         hparams['random_state'] = random_state
@@ -81,16 +80,18 @@ def run_multiple_panel(yaml_filename, random_state_start=0):
                                   gate_size_default=hparams['gate_size_default'])
 
         dafi_forest = run_train_dafi(dafi_forest, hparams, cll_4d_2p_input)
-        model_forest, train_tracker, eval_tracker, run_time, checkpoints = run_train_model(model_forest, hparams, cll_4d_2p_input)
+        model_forest, train_tracker, eval_tracker, run_time, model_checkpoint_dict =\
+            run_train_model(model_forest, hparams, cll_4d_2p_input, model_checkpoint=model_checkpoint)
         output_metric_dict = run_output(
             model_forest, dafi_forest, hparams, cll_4d_2p_input, train_tracker, eval_tracker, run_time)
 
         # only plot once
         if not os.path.isfile('../output/%s/metrics.png' % hparams['experiment_name']):
             run_plot_metric(hparams, train_tracker, eval_tracker, dafi_forest, cll_4d_2p_input, output_metric_dict)
-
+        run_write_prediction(model_forest, dafi_forest, cll_4d_2p_input, hparams)
+        run_gate_motion_in_one_figure(hparams, cll_4d_2p_input, model_checkpoint_dict)
 
 #
 if __name__ == '__main__':
     # run(sys.argv[1], int(sys.argv[2]))
-    run_multiple_panel("../configs/cll_4d_2p_dafi_init.yaml", 0)
+    run_multiple_panel("../configs/cll_4d_2p_default.yaml", 0, True)

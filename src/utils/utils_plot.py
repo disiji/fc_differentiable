@@ -31,8 +31,8 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
     # Add scatter plot
     ax.scatter(x1, x2, s=1)
     n_gates = len(gates)
-    colors = ["red", "black", "red", "blue", "purple"]
-    linestyles = ['dashed', 'solid', 'solid', 'solid', 'solid']
+    colors = ["black", "red", "red", "blue", "purple"]
+    linestyles = ['solid', 'dashed', 'solid', 'solid', 'solid']
 
     for i in range(n_gates):
         dim1 = gates[i].gate_dim1
@@ -50,7 +50,7 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
         # Create a Rectangle patch
         rect = patches.Rectangle((gate_low1, gate_low2), gate_upp1 - gate_low1, gate_upp2 - gate_low2,
                                  edgecolor=colors[i], linestyle=linestyles[i],
-                                 facecolor='none', label=gate_names[i], linewidth=3,)
+                                 facecolor='none', label=gate_names[i], linewidth=3, )
         # Add the patch to the Axes
         ax.add_patch(rect)
     ax.set_xlabel(id2feature[dim1])
@@ -298,21 +298,21 @@ def plot_cll_1p_light(normalized_x, filtered_normalized_x, y, FEATURES, model_tr
     fig_leaf_neg.savefig(figname_leaf_neg)
 
 
-def plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filename):
+def plot_motion(input, epoch_list, model_checkpoint_dict, filename):
     # data to plot on
     input_x_pos = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 1], dim=0)
     input_x_pos_subsample = input_x_pos[torch.randperm(input_x_pos.size()[0])][:10_000]
     input_x_neg = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 0], dim=0)
     input_x_neg_subsample = input_x_neg[torch.randperm(input_x_neg.size()[0])][:10_000]
 
-    gate_root_init = train_tracker.model_init.root
-    for item in train_tracker.model_init.children_dict:
-        if len(train_tracker.model_init.children_dict[item]) > 0:
-            gate_leaf_init = train_tracker.model_init.children_dict[item][0]
     gate_root_ref = input.reference_tree.gate
     gate_leaf_ref = input.reference_tree.children[0].gate
 
-    fig, axarr = plt.subplots(nrows=4, ncols=4, figsize=(10,10), sharex=True, sharey=True)
+    fig, axarr = plt.subplots(nrows=4, ncols=len(model_checkpoint_dict),
+                              figsize=(10 / 4 * len(model_checkpoint_dict), 10), sharex=True, sharey=True)
+
+    col_titles = ["Iterations: %d" % epoch for epoch in epoch_list]
+    row_titles = ["Positive Root", "Positive Leaf", "Negative Root", "Negative Leaf"]
 
     # plot the first row: positive root
     for idx, epoch in enumerate(epoch_list):
@@ -320,10 +320,10 @@ def plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filenam
         model_tree = model_checkpoint_dict[epoch]
         gate_root_model = model_tree.root
         axarr[0, idx] = plot_gates(input_x_pos_subsample[:, 0], input_x_pos_subsample[:, 1],
-                                   [gate_root_init, gate_root_ref, gate_root_model],
-                                   ["init", "DAFi", "Model"], input.features,
+                                   [gate_root_ref, gate_root_model],
+                                   ["Expert", "Model"], input.features,
                                    ax=axarr[0, idx], filename=None, normalized=True)
-    axarr[0, 0].set_ylabel("Positive Root")
+        axarr[0, idx].get_legend().remove()
 
     # plot the second row: positive leaf
     for idx, epoch in enumerate(epoch_list):
@@ -338,10 +338,12 @@ def plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filenam
             if len(model_tree.children_dict[item]) > 0:
                 gate_leaf_model = model_tree.children_dict[item][0]
         axarr[1, idx] = plot_gates(filtered_input_x_pos[:, 2], filtered_input_x_pos[:, 3],
-                                   [gate_leaf_init, gate_leaf_ref, gate_leaf_model],
-                                   ["init", "DAFi", "Model"], input.features,
+                                   [gate_leaf_ref, gate_leaf_model],
+                                   ["Expert", "Model"], input.features,
                                    ax=axarr[1, idx], filename=None, normalized=True)
-    axarr[1, 0].set_ylabel("Positive Leaf")
+        axarr[1, idx].get_legend().remove()
+
+    # plt.subplots_adjust(top = 0.99, bottom=0.01, hspace=1.5, wspace=0.4)
 
     # plot the third row: negative root
     for idx, epoch in enumerate(epoch_list):
@@ -349,10 +351,10 @@ def plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filenam
         model_tree = model_checkpoint_dict[epoch]
         gate_root_model = model_tree.root
         axarr[2, idx] = plot_gates(input_x_neg_subsample[:, 0], input_x_neg_subsample[:, 1],
-                                   [gate_root_init, gate_root_ref, gate_root_model],
-                                   ["init", "DAFi", "Model"], input.features,
+                                   [gate_root_ref, gate_root_model],
+                                   ["Expert", "Model"], input.features,
                                    ax=axarr[2, idx], filename=None, normalized=True)
-    axarr[2, 0].set_ylabel("Negative Root")
+        axarr[2, idx].get_legend().remove()
 
     # plot the fourth row: negative leaf
     for idx, epoch in enumerate(epoch_list):
@@ -367,10 +369,21 @@ def plot_motion(input, epoch_list, model_checkpoint_dict, train_tracker, filenam
             if len(model_tree.children_dict[item]) > 0:
                 gate_leaf_model = model_tree.children_dict[item][0]
         axarr[3, idx] = plot_gates(filtered_input_x_neg[:, 2], filtered_input_x_neg[:, 3],
-                                   [gate_leaf_init, gate_leaf_ref, gate_leaf_model],
-                                   ["init", "DAFi", "Model"], input.features,
+                                   [gate_leaf_ref, gate_leaf_model],
+                                   ["Expert", "Model"], input.features,
                                    ax=axarr[3, idx], filename=None, normalized=True)
-        axarr[3, idx].set_xlabel("Iterations: %d" % epoch)
-    axarr[3, 0].set_ylabel("Negative Leaf")
+        axarr[3, idx].legend(loc=1, prop={'size': 10})
+        if idx < len(epoch_list) - 1:
+            axarr[3, idx].get_legend().remove()
 
-    fig.savefig(filename)
+    pad = 5
+    for ax, col in zip(axarr[0], col_titles):
+        ax.annotate(col, xy=(0.5, 1), xytext=(0, pad),
+                    xycoords='axes fraction', textcoords='offset points',
+                    size='large', ha='center', va='baseline')
+    for ax, row in zip(axarr[:,0], row_titles):
+        ax.annotate(row, xy=(0, 0.5), xytext=(-ax.yaxis.labelpad - pad, 0),
+                    xycoords=ax.yaxis.label, textcoords='offset points',
+                    size='large', ha='right', va='center', rotation=90)
+
+    fig.savefig(filename, format='png', bbox_inches='tight')

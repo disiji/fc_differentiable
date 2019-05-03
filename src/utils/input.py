@@ -106,7 +106,6 @@ class Cll4dInput(CLLInputBase):
 
     def _normalize_(self):
         self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
-        print(self.features_full, self.features, self.feature2id, offset, scale)
         self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
                                                               self.feature2id)
         self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
@@ -144,6 +143,7 @@ class Cll4d2pInput(CLLInputBase):
                            dict((self.features[1][i], i) for i in range(len(self.features[1])))]
 
         self._load_data_()
+        self._fill_empty_samples_()
         self._get_reference_nested_list_()
         self._get_init_nested_list_()
         self._normalize_()
@@ -177,8 +177,19 @@ class Cll4d2pInput(CLLInputBase):
             with open(DATA_DIR + 'y_2p_list.pkl', 'wb') as f:
                 pickle.dump(y, f)
             self.x_list, self.y_list = x_4d_2p, y
-        print([x[0].shape[0] for x in self.x_list])
-        print([x[1].shape[0] for x in self.x_list])
+
+    def _fill_empty_samples_(self):
+        for panel_id in range(2):
+            input_x_pos = np.concatenate([self.x_list[idx][panel_id] for idx in range(len(self.y_list))
+                                          if self.y_list[idx] == 1])
+            input_x_neg = np.concatenate([self.x_list[idx][panel_id] for idx in range(len(self.y_list))
+                                          if self.y_list[idx] == 0])
+            for sample_id in range(len(self.x_list)):
+                if self.x_list[sample_id][panel_id].shape[0] == 0:
+                    if self.y_list[sample_id] == 1:
+                        self.x_list[sample_id][panel_id] = np.random.permutation(input_x_pos)[:10_000]
+                    else:
+                        self.x_list[sample_id][panel_id] = np.random.permutation(input_x_neg)[:10_000]
 
     def _get_reference_nested_list_(self):
         self.reference_nested_list = \
@@ -245,6 +256,8 @@ class Cll4d2pInput(CLLInputBase):
             self.init_tree = [None] * self.n_panels
 
     def split(self, random_state=123):
+        print(np.array(self.x_list).shape)
+        print(np.array(self.y_list).shape)
         self.x_train, self.x_eval, self.y_train, self.y_eval = train_test_split(np.array(self.x_list), self.y_list,
                                                                                 test_size=self.hparams['test_size'],
                                                                                 random_state=random_state)

@@ -36,7 +36,7 @@ class Tracker():
         self.precision.append(precision_score(y_true.numpy(), y_pred, average='macro'))
         self.recall.append(recall_score(y_true.numpy(), y_pred, average='macro'))
         self.roc_auc_score.append(roc_auc_score(y_true.numpy(), y_pred, average='macro'))
-        self.brier_score_loss.append(brier_score_loss(y_true.numpy(), y_pred))
+        self.brier_score_loss.append(brier_score_loss(y_true.numpy(), output['y_pred'].detach().numpy()))
         self.log_decision_boundary.append(
             (-model.linear.bias.detach() / model.linear.weight.detach()))
         # keep track of optimal gates for train and eval set
