@@ -8,6 +8,7 @@ from sklearn.metrics import roc_auc_score
 from utils import utils_plot as util_plot
 from utils.input import *
 from utils.utils_train import Tracker
+from utils.input import CLLInputBase
 
 
 def run_train_dafi(dafi_tree, hparams, input):
@@ -43,6 +44,9 @@ def run_train_dafi(dafi_tree, hparams, input):
             loss = output['loss']
             loss.backward()
             dafi_optimizer_classifier.step()
+        if epoch % hparams['n_epoch_eval'] == 0:
+            y_pred = (dafi_tree(input.x, input.y)['y_pred'].detach().numpy() > 0.5) * 1.0
+            print("Accuracy as Epoch %d: %.3f" % (epoch, sum((y_pred == input.y.numpy()) * 1.0) / input.y.shape[0]))
     print("Running time for training classifier with DAFi gates: %.3f seconds." % (time.time() - start))
     return dafi_tree
 
@@ -121,8 +125,11 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
             print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
                 epoch, i, train_tracker.acc[-1], eval_tracker.acc[-1]))
 
+        # epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]
+        epoch_list = [0, 100, 200, 300, 500, 700, 1000]
+
         if model_checkpoint:
-            if epoch+1 in [100, 300, 500, 1000, 1500, 2000]:#[100, 200, 300, 400, 500, 600]:
+            if epoch+1 in epoch_list:#[100, 200, 300, 400, 500, 600]:
                 model_checkpoint_dict[epoch+1] = deepcopy(model)
 
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))
@@ -166,6 +173,8 @@ def run_output(model, dafi_tree, hparams, input, train_tracker, eval_tracker, ru
     y_score_train_dafi = dafi_tree(input.x_train, input.y_train)['y_pred'].detach().numpy()
     y_score_eval_dafi = dafi_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy()
     y_score_dafi = dafi_tree(input.x, input.y)['y_pred'].detach().numpy()
+    print("##########")
+    print(y_score_train_dafi, y_score_eval_dafi, y_score_dafi)
     y_pred_train_dafi = (y_score_train_dafi > 0.5) * 1.0
     y_pred_eval_dafi = (y_score_eval_dafi > 0.5) * 1.0
     y_pred_dafi = (y_score_dafi > 0.5) * 1.0
@@ -270,7 +279,7 @@ def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, 
                           filename_root_pas, filename_root_neg, filename_leaf_pas, filename_leaf_neg)
 
 
-def run_gate_motion(hparams, input, model_checkpoint_dict, train_tracker, n_samples_plot=20):
+def run_gate_motion_step(hparams, input, model_checkpoint_dict, train_tracker, n_samples_plot=20):
     # select 10 samples for plotting
     idx_pos = [i for i in range(len(input.y)) if input.y[i] == 1][:(n_samples_plot // 2)]
     idx_neg = [i for i in range(len(input.y)) if input.y[i] == 0][:(n_samples_plot // 2)]
@@ -297,12 +306,38 @@ def run_gate_motion(hparams, input, model_checkpoint_dict, train_tracker, n_samp
                                     train_tracker, filename_root_pas, filename_root_neg, filename_leaf_pas,
                                     filename_leaf_neg)
 
-def run_gate_motion_in_one_figure(hparams, input, model_checkpoint_dict):
+def run_gate_motion_1p(hparams, input, model_checkpoint_dict):
 
     filename = "../output/%s/gate_motion.png" % hparams['experiment_name']
     # select checkpoints to plot, limit the length to 4
     epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]#[100, 200, 300, 400, 500, 600]
-    util_plot.plot_motion(input, epoch_list, model_checkpoint_dict, filename)
+    util_plot.plot_motion_p1(input, epoch_list, model_checkpoint_dict, filename)
+
+def run_gate_motion_2p(hparams, input, model_checkpoint_dict):
+
+    filename_p1 = "../output/%s/gate_motion_p1.png" % hparams['experiment_name']
+    filename_p2 = "../output/%s/gate_motion_p2.png" % hparams['experiment_name']
+    filename_p2_swap = "../output/%s/gate_motion_p2_swap.png" % hparams['experiment_name']
+    # select checkpoints to plot, limit the length to 4
+    # epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]#[100, 200, 300, 400, 500, 600]
+    epoch_list = [0, 100, 200, 300, 500, 700, 1000]
+    model_checkpoint_dict_p1 = {epoch: model_checkpoint_dict[epoch].model_trees[0] for epoch in epoch_list}
+    model_checkpoint_dict_p2 = {epoch: model_checkpoint_dict[epoch].model_trees[1] for epoch in epoch_list}
+    input_p1 = CLLInputBase()
+    input_p1.x = [_[0] for _ in input.x]
+    input_p1.y = input.y
+    input_p1.features = input.features[0]
+    input_p1.reference_tree = input.reference_tree[0]
+    input_p2 = CLLInputBase()
+    input_p2.x = [_[1] for _ in input.x]
+    input_p2.y = input.y
+    input_p2.features = input.features[1]
+    input_p2.reference_tree = input.reference_tree[1]
+
+    # input.x, input.y, input.features, input.reference_
+    util_plot.plot_motion_p1(input_p1, epoch_list, model_checkpoint_dict_p1, filename_p1)
+    util_plot.plot_motion_p2(input_p2, epoch_list, model_checkpoint_dict_p2, filename_p2)
+    util_plot.plot_motion_p2_swap(input_p2, epoch_list, model_checkpoint_dict_p2, filename_p2_swap)
 
 
 

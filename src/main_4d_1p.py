@@ -92,7 +92,7 @@ def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True)
         # run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
         # run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
         run_write_prediction(model_tree, dafi_tree, cll_4d_input, hparams)
-        run_gate_motion_in_one_figure(hparams, cll_4d_input, model_checkpoint_dict)
+        run_gate_motion_1p(hparams, cll_4d_input, model_checkpoint_dict)
         # model_checkpoint = False
 
 

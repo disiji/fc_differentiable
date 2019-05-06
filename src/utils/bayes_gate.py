@@ -355,7 +355,7 @@ class ModelForest(nn.Module):
             feature_counter += n_panel_features
             output['ref_reg_loss'] += output_panel['ref_reg_loss']
             output['size_reg_loss'] += output_panel['size_reg_loss']
-            output['corner_reg_loss'] + output_panel['corner_reg_loss']
+            output['corner_reg_loss'] += output_panel['corner_reg_loss']
 
         output['leaf_logp'] = torch.log(output['leaf_probs'])
         output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
@@ -374,5 +374,4 @@ class ModelForest(nn.Module):
                                              output['leaf_probs'][sample_idx][0] / sum(y)
             output['loss'] = output['ref_reg_loss'] + output['size_reg_loss'] + \
                              output['emp_reg_loss'] + output['log_loss'] + output['corner_reg_loss']
-
         return output

@@ -298,7 +298,7 @@ def plot_cll_1p_light(normalized_x, filtered_normalized_x, y, FEATURES, model_tr
     fig_leaf_neg.savefig(figname_leaf_neg)
 
 
-def plot_motion(input, epoch_list, model_checkpoint_dict, filename):
+def plot_motion_p1(input, epoch_list, model_checkpoint_dict, filename):
     # data to plot on
     input_x_pos = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 1], dim=0)
     input_x_pos_subsample = input_x_pos[torch.randperm(input_x_pos.size()[0])][:10_000]
@@ -387,3 +387,207 @@ def plot_motion(input, epoch_list, model_checkpoint_dict, filename):
                     size='large', ha='right', va='center', rotation=90)
 
     fig.savefig(filename, format='png', bbox_inches='tight')
+
+
+
+def plot_motion_p2(input, epoch_list, model_checkpoint_dict, filename):
+    # data to plot on
+    input_x_pos = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 1], dim=0)
+    input_x_pos_subsample = input_x_pos[torch.randperm(input_x_pos.size()[0])][:10_000]
+    input_x_neg = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 0], dim=0)
+    input_x_neg_subsample = input_x_neg[torch.randperm(input_x_neg.size()[0])][:10_000]
+
+    gate_root_ref = input.reference_tree.gate
+    gate_left_ref = input.reference_tree.children[0].gate
+    gate_right_ref = input.reference_tree.children[1].gate
+
+    fig, axarr = plt.subplots(nrows=6, ncols=len(model_checkpoint_dict),
+                              figsize=(10 / 4 * len(model_checkpoint_dict), 10. / 4 * 6), sharex=True, sharey=True)
+
+    col_titles = ["Iterations: %d" % epoch for epoch in epoch_list]
+    row_titles = ["Positive Root", "Positive Left", "Positive Right", "Negative Root", "Negative Left", "Negative Right"]
+
+    # plot the first row: positive root
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        gate_root_model = model_tree.root
+        axarr[0, idx] = plot_gates(input_x_pos_subsample[:, 0], input_x_pos_subsample[:, 1],
+                                   [gate_root_ref, gate_root_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[0, idx], filename=None, normalized=True)
+        axarr[0, idx].get_legend().remove()
+
+    # plot the second row: positive leaf
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        filtered_input_x_pos = dh.filter_rectangle(input_x_pos_subsample, 0, 1,
+                                                   F.sigmoid(model_tree.root.gate_low1_param),
+                                                   F.sigmoid(model_tree.root.gate_upp1_param),
+                                                   F.sigmoid(model_tree.root.gate_low2_param),
+                                                   F.sigmoid(model_tree.root.gate_upp2_param))
+
+        for item in model_tree.children_dict:
+            if len(model_tree.children_dict[item]) > 0:
+                gate_left_model, gate_right_model = model_tree.children_dict[item]
+        axarr[1, idx] = plot_gates(filtered_input_x_pos[:, 2], filtered_input_x_pos[:, 3],
+                                   [gate_left_ref, gate_left_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[1, idx], filename=None, normalized=True)
+        axarr[1, idx].get_legend().remove()
+        axarr[2, idx] = plot_gates(filtered_input_x_pos[:, 2], filtered_input_x_pos[:, 3],
+                                   [gate_right_ref, gate_right_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[2, idx], filename=None, normalized=True)
+        axarr[2, idx].get_legend().remove()
+
+    # plot the third row: negative root
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        gate_root_model = model_tree.root
+        axarr[3, idx] = plot_gates(input_x_neg_subsample[:, 0], input_x_neg_subsample[:, 1],
+                                   [gate_root_ref, gate_root_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[3, idx], filename=None, normalized=True)
+        axarr[3, idx].get_legend().remove()
+
+    # plot the fourth row: negative leaf
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        filtered_input_x_neg = dh.filter_rectangle(input_x_neg_subsample, 0, 1,
+                                                   F.sigmoid(model_tree.root.gate_low1_param),
+                                                   F.sigmoid(model_tree.root.gate_upp1_param),
+                                                   F.sigmoid(model_tree.root.gate_low2_param),
+                                                   F.sigmoid(model_tree.root.gate_upp2_param))
+        for item in model_tree.children_dict:
+            if len(model_tree.children_dict[item]) > 0:
+                gate_left_model, gate_right_model = model_tree.children_dict[item]
+        axarr[4, idx] = plot_gates(filtered_input_x_neg[:, 2], filtered_input_x_neg[:, 3],
+                                   [gate_left_ref, gate_left_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[4, idx], filename=None, normalized=True)
+        axarr[4, idx].get_legend().remove()
+        axarr[5, idx] = plot_gates(filtered_input_x_neg[:, 2], filtered_input_x_neg[:, 3],
+                                   [gate_right_ref, gate_right_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[5, idx], filename=None, normalized=True)
+        axarr[5, idx].legend(loc=1, prop={'size': 10})
+        if idx < len(epoch_list) - 1:
+            axarr[5, idx].get_legend().remove()
+
+    pad = 5
+    for ax, col in zip(axarr[0], col_titles):
+        ax.annotate(col, xy=(0.5, 1), xytext=(0, pad),
+                    xycoords='axes fraction', textcoords='offset points',
+                    size='large', ha='center', va='baseline')
+    for ax, row in zip(axarr[:,0], row_titles):
+        ax.annotate(row, xy=(0, 0.5), xytext=(-ax.yaxis.labelpad - pad, 0),
+                    xycoords=ax.yaxis.label, textcoords='offset points',
+                    size='large', ha='right', va='center', rotation=90)
+
+    fig.savefig(filename, format='png', bbox_inches='tight')
+
+
+def plot_motion_p2_swap(input, epoch_list, model_checkpoint_dict, filename):
+    # data to plot on
+    input_x_pos = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 1], dim=0)
+    input_x_pos_subsample = input_x_pos[torch.randperm(input_x_pos.size()[0])][:10_000]
+    input_x_neg = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 0], dim=0)
+    input_x_neg_subsample = input_x_neg[torch.randperm(input_x_neg.size()[0])][:10_000]
+
+    gate_root_ref = input.reference_tree.gate
+    gate_left_ref = input.reference_tree.children[0].gate
+    gate_right_ref = input.reference_tree.children[1].gate
+
+    fig, axarr = plt.subplots(nrows=6, ncols=len(model_checkpoint_dict),
+                              figsize=(10 / 4 * len(model_checkpoint_dict), 10. / 4 * 6), sharex=True, sharey=True)
+
+    col_titles = ["Iterations: %d" % epoch for epoch in epoch_list]
+    row_titles = ["Positive Root", "Positive Left", "Positive Right", "Negative Root", "Negative Left", "Negative Right"]
+
+    # plot the first row: positive root
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        gate_root_model = model_tree.root
+        axarr[0, idx] = plot_gates(input_x_pos_subsample[:, 0], input_x_pos_subsample[:, 1],
+                                   [gate_root_ref, gate_root_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[0, idx], filename=None, normalized=True)
+        axarr[0, idx].get_legend().remove()
+
+    # plot the second row: positive leaf
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        filtered_input_x_pos = dh.filter_rectangle(input_x_pos_subsample, 0, 1,
+                                                   F.sigmoid(model_tree.root.gate_low1_param),
+                                                   F.sigmoid(model_tree.root.gate_upp1_param),
+                                                   F.sigmoid(model_tree.root.gate_low2_param),
+                                                   F.sigmoid(model_tree.root.gate_upp2_param))
+
+        for item in model_tree.children_dict:
+            if len(model_tree.children_dict[item]) > 0:
+                gate_right_model, gate_left_model = model_tree.children_dict[item]
+        axarr[1, idx] = plot_gates(filtered_input_x_pos[:, 2], filtered_input_x_pos[:, 3],
+                                   [gate_left_ref, gate_left_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[1, idx], filename=None, normalized=True)
+        axarr[1, idx].get_legend().remove()
+        axarr[2, idx] = plot_gates(filtered_input_x_pos[:, 2], filtered_input_x_pos[:, 3],
+                                   [gate_right_ref, gate_right_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[2, idx], filename=None, normalized=True)
+        axarr[2, idx].get_legend().remove()
+
+    # plot the third row: negative root
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        gate_root_model = model_tree.root
+        axarr[3, idx] = plot_gates(input_x_neg_subsample[:, 0], input_x_neg_subsample[:, 1],
+                                   [gate_root_ref, gate_root_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[3, idx], filename=None, normalized=True)
+        axarr[3, idx].get_legend().remove()
+
+    # plot the fourth row: negative leaf
+    for idx, epoch in enumerate(epoch_list):
+        # find model gates to plot
+        model_tree = model_checkpoint_dict[epoch]
+        filtered_input_x_neg = dh.filter_rectangle(input_x_neg_subsample, 0, 1,
+                                                   F.sigmoid(model_tree.root.gate_low1_param),
+                                                   F.sigmoid(model_tree.root.gate_upp1_param),
+                                                   F.sigmoid(model_tree.root.gate_low2_param),
+                                                   F.sigmoid(model_tree.root.gate_upp2_param))
+        for item in model_tree.children_dict:
+            if len(model_tree.children_dict[item]) > 0:
+                gate_right_model, gate_left_model = model_tree.children_dict[item]
+        axarr[4, idx] = plot_gates(filtered_input_x_neg[:, 2], filtered_input_x_neg[:, 3],
+                                   [gate_left_ref, gate_left_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[4, idx], filename=None, normalized=True)
+        axarr[4, idx].get_legend().remove()
+        axarr[5, idx] = plot_gates(filtered_input_x_neg[:, 2], filtered_input_x_neg[:, 3],
+                                   [gate_right_ref, gate_right_model],
+                                   ["Expert", "Model"], input.features,
+                                   ax=axarr[5, idx], filename=None, normalized=True)
+        axarr[5, idx].legend(loc=1, prop={'size': 10})
+        if idx < len(epoch_list) - 1:
+            axarr[5, idx].get_legend().remove()
+
+    pad = 5
+    for ax, col in zip(axarr[0], col_titles):
+        ax.annotate(col, xy=(0.5, 1), xytext=(0, pad),
+                    xycoords='axes fraction', textcoords='offset points',
+                    size='large', ha='center', va='baseline')
+    for ax, row in zip(axarr[:,0], row_titles):
+        ax.annotate(row, xy=(0, 0.5), xytext=(-ax.yaxis.labelpad - pad, 0),
+                    xycoords=ax.yaxis.label, textcoords='offset points',
+                    size='large', ha='right', va='center', rotation=90)
+
+    fig.savefig(filename, format='png', bbox_inches='tight')
+

@@ -228,14 +228,14 @@ class Cll4d2pInput(CLLInputBase):
                 ]
             ],
                 [
-                    [[u'CD38', 0., 500.], [u'CD20', 100., 1400.]],
+                    [[u'CD38', 1024., 3071. ], [u'CD20', 1024., 3071.]],
                     [
                         [
-                            [[u'Anti-Kappa', 800., 2300.], [u'Anti-Lambda', 0., 400.]],
+                            [[u'Anti-Kappa', 1024., 3072.], [u'Anti-Lambda', 1023., 3070.]],
                             []
                         ],
                         [
-                            [[u'Anti-Kappa', 0., 800.], [u'Anti-Lambda', 800., 2300.]],
+                            [[u'Anti-Kappa', 1024., 3072.], [u'Anti-Lambda', 1023., 3070.]],
                             []
                         ]
                     ]
@@ -243,6 +243,8 @@ class Cll4d2pInput(CLLInputBase):
 
     def _normalize_(self):
         self.x_list, offset, scale = dh.normalize_x_list_multiple_panels(self.x_list)
+        print("offset:", offset)
+        print("scale:", scale)
         self.reference_nested_list = [dh.normalize_nested_tree(self.reference_nested_list[i], offset[i], scale[i],
                                                                self.feature2id[i]) for i in range(self.n_panels)]
         self.init_nested_list = [dh.normalize_nested_tree(self.init_nested_list[i], offset[i], scale[i],
