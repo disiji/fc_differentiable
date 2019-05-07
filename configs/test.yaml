@@ -1,2 +1,2 @@
-experiment_name: 'cll_4d_2p_default'
-n_epoch: 1000
+experiment_name: 'cll_4d_2p_test'
+n_epoch: 500

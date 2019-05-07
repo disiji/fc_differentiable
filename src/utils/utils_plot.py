@@ -136,9 +136,10 @@ def plot_metrics(x_range, train_tracker, eval_tracker, filename,
         ax_metric[3, 0].plot(x_range, [output_metric_dict['eval_brier_score_dafi'] for _ in x_range])
         ax_metric[3, 0].legend(["train brier", "eval brier", "train brier-DAFi", "eval brier-DAFi"], prop={'size': 6})
 
-    ax_metric[3, 1].plot(x_range, train_tracker.log_decision_boundary)
-    ax_metric[3, 1].set_xlabel("#Epoch")
-    ax_metric[3, 1].legend(["log decision boundary"], prop={'size': 6})
+    if train_tracker.log_decision_boundary[0].shape[1] == 1:
+        ax_metric[3, 1].plot(x_range, train_tracker.log_decision_boundary)
+        ax_metric[3, 1].set_xlabel("#Epoch")
+        ax_metric[3, 1].legend(["log decision boundary"], prop={'size': 6})
 
     ax_metric[4, 0].plot(x_range, train_tracker.corner_reg_loss)
     ax_metric[4, 0].set_xlabel("#Epoch")

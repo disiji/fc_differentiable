@@ -357,7 +357,9 @@ class ModelForest(nn.Module):
             output['size_reg_loss'] += output_panel['size_reg_loss']
             output['corner_reg_loss'] += output_panel['corner_reg_loss']
 
-        output['leaf_logp'] = torch.log(output['leaf_probs'])
+
+        # output['leaf_logp'] = torch.log(output['leaf_probs'])
+        output['leaf_logp'] = torch.log(torch.clamp(output['leaf_probs'], min=1e-10, max=1-(1e-10)))
         output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
 
         if len(y) > 0:

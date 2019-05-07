@@ -15,18 +15,18 @@ default_hparams = {
     'negative_box_penalty': 0.1,
     'positive_box_penalty': 0,
     'corner_penalty': 1.0,
-    'gate_size_penalty': 1,
+    'gate_size_penalty': 0.5,
     'gate_size_default': (0.5, 0.5),
     'load_from_pickle': True,
     'dafi_init': False,
     'optimizer': "Adam",  # or Adam, SGD
     'loss_type': 'logistic',  # or MSE
     'n_epoch_eval': 20,
-    'n_mini_batch_update_gates': 50,
+    'n_mini_batch_update_gates': 20,
     'learning_rate_classifier': 0.05,
-    'learning_rate_gates': 0.1,
+    'learning_rate_gates': 0.15,
     'batch_size': 10,
-    'n_epoch': 2000,
+    'n_epoch': 500,
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
@@ -90,14 +90,15 @@ def run_multiple_panel(yaml_filename, random_state_start=0, model_checkpoint=Tru
             pickle.dump(model_forest, pfile, protocol=pickle.HIGHEST_PROTOCOL)
         with open('../output/%s/dafi_forest_%d.pkl' % (hparams['experiment_name'], random_state),  'wb') as pfile:
             pickle.dump(dafi_forest, pfile, protocol=pickle.HIGHEST_PROTOCOL)
+
         print("regression parameters:", model_forest.linear.weight.detach(), model_forest.linear.bias.detach())
         print("regression parameters:", dafi_forest.linear.weight.detach(), dafi_forest.linear.bias.detach())
         # todo: boundrary is not defined when #features  > 1
-        # run_plot_metric(hparams, train_tracker, eval_tracker, dafi_forest, cll_4d_2p_input, output_metric_dict)
+        run_plot_metric(hparams, train_tracker, eval_tracker, dafi_forest, cll_4d_2p_input, output_metric_dict)
         run_write_prediction(model_forest, dafi_forest, cll_4d_2p_input, hparams)
         run_gate_motion_2p(hparams, cll_4d_2p_input, model_checkpoint_dict)
 
 #
 if __name__ == '__main__':
     # run(sys.argv[1], int(sys.argv[2]))
-    run_multiple_panel("../configs/test.yaml", 0, True)
+    run_multiple_panel("../configs/cll_4d_2p_default.yaml", 0, True)

@@ -187,9 +187,9 @@ class Cll4d2pInput(CLLInputBase):
             for sample_id in range(len(self.x_list)):
                 if self.x_list[sample_id][panel_id].shape[0] == 0:
                     if self.y_list[sample_id] == 1:
-                        self.x_list[sample_id][panel_id] = np.random.permutation(input_x_pos)[:10_000]
+                        self.x_list[sample_id][panel_id] = np.random.permutation(input_x_pos)[:100]
                     else:
-                        self.x_list[sample_id][panel_id] = np.random.permutation(input_x_neg)[:10_000]
+                        self.x_list[sample_id][panel_id] = np.random.permutation(input_x_neg)[:100]
 
     def _get_reference_nested_list_(self):
         self.reference_nested_list = \

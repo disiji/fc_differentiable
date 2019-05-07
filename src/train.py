@@ -11,20 +11,20 @@ from utils.utils_train import Tracker
 from utils.input import CLLInputBase
 
 
-def run_train_dafi(dafi_tree, hparams, input):
+def run_train_dafi(dafi_model, hparams, input):
     """
     train a classifier on the top of DAFi features
-    :param dafi_tree:
+    :param dafi_model:
     :param hparams:
     :param input:
     :return:
     """
     start = time.time()
     if hparams['optimizer'] == "SGD":
-        dafi_optimizer_classifier = torch.optim.SGD([dafi_tree.linear.weight, dafi_tree.linear.bias],
+        dafi_optimizer_classifier = torch.optim.SGD([dafi_model.linear.weight, dafi_model.linear.bias],
                                                     lr=hparams['learning_rate_classifier'])
     else:
-        dafi_optimizer_classifier = torch.optim.Adam([dafi_tree.linear.weight, dafi_tree.linear.bias],
+        dafi_optimizer_classifier = torch.optim.Adam([dafi_model.linear.weight, dafi_model.linear.bias],
                                                      lr=hparams['learning_rate_classifier'])
 
     for epoch in range(hparams['n_epoch_dafi']):
@@ -33,22 +33,19 @@ def run_train_dafi(dafi_tree, hparams, input):
         x_train = [input.x_train[_] for _ in idx_shuffle]
         y_train = input.y_train[idx_shuffle]
         for i in range(len(x_train) // hparams['batch_size']):
-            # if dafi_tree.__class__.__name__ == "ModelForest":
-            #     print(dafi_tree.model_trees[0].root.__repr__(), dafi_tree.model_trees[0].root.__repr__())
-            #     print(dafi_tree.linear.weight, dafi_tree.linear.bias)
             idx_batch = [j for j in range(hparams['batch_size'] * i, hparams['batch_size'] * (i + 1))]
             x_batch = [x_train[j] for j in idx_batch]
             y_batch = y_train[idx_batch]
             dafi_optimizer_classifier.zero_grad()
-            output = dafi_tree(x_batch, y_batch)
+            output = dafi_model(x_batch, y_batch)
             loss = output['loss']
             loss.backward()
             dafi_optimizer_classifier.step()
         if epoch % hparams['n_epoch_eval'] == 0:
-            y_pred = (dafi_tree(input.x, input.y)['y_pred'].detach().numpy() > 0.5) * 1.0
-            print("Accuracy as Epoch %d: %.3f" % (epoch, sum((y_pred == input.y.numpy()) * 1.0) / input.y.shape[0]))
+            y_pred = (dafi_model(input.x, input.y)['y_pred'].detach().numpy() > 0.5) * 1.0
+            print("Accuracy as Epoch %d: %.3f" % (epoch, sum((y_pred == input.y.numpy()) ) / input.y.shape[0]))
     print("Running time for training classifier with DAFi gates: %.3f seconds." % (time.time() - start))
-    return dafi_tree
+    return dafi_model
 
 
 def run_train_model(model, hparams, input, model_checkpoint=False):
@@ -107,9 +104,6 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
         # print every n_batch_print mini-batches
         if epoch % hparams['n_epoch_eval'] == 0:
             # stats on train
-            print(epoch)
-            print(model)
-            print(model(input.x_train, input.y_train)['y_pred'].detach().numpy())
             train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, i)
             eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, i)
 
@@ -126,7 +120,8 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
                 epoch, i, train_tracker.acc[-1], eval_tracker.acc[-1]))
 
         # epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]
-        epoch_list = [0, 100, 200, 300, 500, 700, 1000]
+        # epoch_list = [0, 100, 200, 300, 500, 700, 1000]
+        epoch_list = [0, 50, 100, 200, 300, 400, 500]
 
         if model_checkpoint:
             if epoch+1 in epoch_list:#[100, 200, 300, 400, 500, 600]:
@@ -173,8 +168,6 @@ def run_output(model, dafi_tree, hparams, input, train_tracker, eval_tracker, ru
     y_score_train_dafi = dafi_tree(input.x_train, input.y_train)['y_pred'].detach().numpy()
     y_score_eval_dafi = dafi_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy()
     y_score_dafi = dafi_tree(input.x, input.y)['y_pred'].detach().numpy()
-    print("##########")
-    print(y_score_train_dafi, y_score_eval_dafi, y_score_dafi)
     y_pred_train_dafi = (y_score_train_dafi > 0.5) * 1.0
     y_pred_eval_dafi = (y_score_eval_dafi > 0.5) * 1.0
     y_pred_dafi = (y_score_dafi > 0.5) * 1.0
@@ -187,6 +180,16 @@ def run_output(model, dafi_tree, hparams, input, train_tracker, eval_tracker, ru
     train_brier_score_dafi = brier_score_loss(input.y_train.numpy(), y_score_train_dafi)
     eval_brier_score_dafi = brier_score_loss(input.y_eval.numpy(), y_score_eval_dafi)
     overall_brier_score_dafi = brier_score_loss(input.y.numpy(), y_score_dafi)
+
+    with open('../output/%s/model_classifier_weights.csv' % hparams['experiment_name'], "a+") as file:
+        bias = str(model.linear.bias.detach().item())
+        weights = ', '.join(map(str, model.linear.weight.data[0].numpy()))
+        file.write('%d, %s, %s\n' % (hparams['random_state'], bias, weights))
+
+    with open('../output/%s/dafi_classifier_weights.csv' % hparams['experiment_name'], "a+") as file:
+        bias = str(dafi_tree.linear.bias.detach().item())
+        weights = ', '.join(map(str, dafi_tree.linear.weight.data[0].numpy()))
+        file.write('%d, %s, %s\n' % (hparams['random_state'], bias, weights))
 
     with open('../output/%s/results_cll_4D.csv' % hparams['experiment_name'], "a+") as file:
         file.write(
@@ -320,7 +323,7 @@ def run_gate_motion_2p(hparams, input, model_checkpoint_dict):
     filename_p2_swap = "../output/%s/gate_motion_p2_swap.png" % hparams['experiment_name']
     # select checkpoints to plot, limit the length to 4
     # epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]#[100, 200, 300, 400, 500, 600]
-    epoch_list = [0, 100, 200, 300, 500, 700, 1000]
+    epoch_list = [0, 50, 100, 200, 300, 400, 500]
     model_checkpoint_dict_p1 = {epoch: model_checkpoint_dict[epoch].model_trees[0] for epoch in epoch_list}
     model_checkpoint_dict_p2 = {epoch: model_checkpoint_dict[epoch].model_trees[1] for epoch in epoch_list}
     input_p1 = CLLInputBase()
@@ -342,28 +345,12 @@ def run_gate_motion_2p(hparams, input, model_checkpoint_dict):
 
 
 def run_write_prediction(model_tree, dafi_tree, input, hparams):
-    np.savetxt("../output/%s/predictions_model_train.csv" % (hparams['experiment_name']),
-               model_tree(input.x_train, input.y_train)['y_pred'].detach().numpy())
-    np.savetxt("../output/%s/predictions_model_test.csv" % (hparams['experiment_name']),
-               model_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy())
-    np.savetxt("../output/%s/predictions_model_whole.csv" % (hparams['experiment_name']),
-               model_tree(input.x, input.y)['y_pred'].detach().numpy())
-    np.savetxt("../output/%s/predictions_dafi_train.csv" % (hparams['experiment_name']),
-               dafi_tree(input.x_train, input.y_train)['y_pred'].detach().numpy())
-    np.savetxt("../output/%s/predictions_dafi_test.csv" % (hparams['experiment_name']),
-               dafi_tree(input.x_eval, input.y_eval)['y_pred'].detach().numpy())
-    np.savetxt("../output/%s/predictions_dafi_whole.csv" % (hparams['experiment_name']),
-               dafi_tree(input.x, input.y)['y_pred'].detach().numpy())
 
-    np.savetxt("../output/%s/features_model_train.csv" % (hparams['experiment_name']),
-               model_tree(input.x_train, input.y_train)['leaf_probs'].detach().numpy())
-    np.savetxt("../output/%s/features_model_test.csv" % (hparams['experiment_name']),
-               model_tree(input.x_eval, input.y_eval)['leaf_probs'].detach().numpy())
-    np.savetxt("../output/%s/features_model_whole.csv" % (hparams['experiment_name']),
-               model_tree(input.x, input.y)['leaf_probs'].detach().numpy())
-    np.savetxt("../output/%s/features_dafi_train.csv" % (hparams['experiment_name']),
-               dafi_tree(input.x_train, input.y_train)['leaf_probs'].detach().numpy())
-    np.savetxt("../output/%s/features_dafi_test.csv" % (hparams['experiment_name']),
-               dafi_tree(input.x_eval, input.y_eval)['leaf_probs'].detach().numpy())
-    np.savetxt("../output/%s/features_dafi_whole.csv" % (hparams['experiment_name']),
-               dafi_tree(input.x, input.y)['leaf_probs'].detach().numpy())
+    with open("../output/%s/features_model.csv" % hparams['experiment_name'], "a+") as file:
+        file.write("%d\n" % hparams['random_state'])
+        np.savetxt(file, model_tree(input.x, input.y)['leaf_logp'].detach().numpy(), delimiter=',')
+        file.write('\n')
+    with open("../output/%s/features_dafi.csv" % hparams['experiment_name'], "a+") as file:
+        file.write("%d\n" % hparams['random_state'])
+        np.savetxt(file, dafi_tree(input.x, input.y)['leaf_logp'].detach().numpy(), delimiter=',')
+        file.write('\n')
