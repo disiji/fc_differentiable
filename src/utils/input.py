@@ -42,7 +42,7 @@ class CLLInputBase:
         pass
 
 
-class Cll4dInput(CLLInputBase):
+class Cll4d1pInput(CLLInputBase):
     def __init__(self, hparams):
         self.hparams = hparams
         self.features = ['CD5', 'CD19', 'CD10', 'CD79b']
@@ -106,6 +106,7 @@ class Cll4dInput(CLLInputBase):
 
     def _normalize_(self):
         self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
+        print(self.feature2id, offset, scale, self.reference_nested_list)
         self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
                                                               self.feature2id)
         self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
@@ -124,6 +125,93 @@ class Cll4dInput(CLLInputBase):
         self.x_eval = [torch.tensor(_, dtype=torch.float32) for _ in self.x_eval]
         self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
         self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
+
+
+class Cll8d1pInput(Cll4d1pInput):
+    """
+    apply FSC-A and FSC-H prefiltering gate and learn other gate locations
+    """
+
+    def __init__(self, hparams):
+        self.hparams = hparams
+        self.features = ['FSC-A', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b']
+        self.features_full = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
+        self.feature2id = dict((self.features[i], i) for i in range(len(self.features)))
+
+        self._load_data_()
+        self._get_reference_nested_list_()
+        self._get_init_nested_list_()
+        self._normalize_()
+        self._construct_()
+        self.split()
+
+        self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
+        self.y = torch.tensor(self.y_list, dtype=torch.float32)
+
+    def _load_data_(self):
+        DATA_DIR = '../data/cll/'
+        CYTOMETRY_DIR = DATA_DIR + "PB1_whole_mqian/"
+        DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
+
+        # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
+        # y: a list of labels; 1 is CLL, 0 is healthy
+        if self.hparams['load_from_pickle']:
+            with open(DATA_DIR + "filtered_8d_1p_x_list.pkl", 'rb') as f:
+                self.x_list = pickle.load(f)
+            with open(DATA_DIR + 'y_1p_list.pkl', 'rb') as f:
+                self.y_list = pickle.load(f)
+        else:
+            x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
+            x_8d = dh.filter_cll_8d_pb1(x)
+            with open(DATA_DIR + 'filtered_8d_1p_x_list.pkl', 'wb') as f:
+                pickle.dump(x_8d, f)
+            with open(DATA_DIR + 'y_1p_list.pkl', 'wb') as f:
+                pickle.dump(y, f)
+            self.x_list, self.y_list = x_8d, y
+
+    def _get_reference_nested_list_(self):
+        self.reference_nested_list = \
+            [
+                [[u'SSC-H', 102., 921.], [u'CD45', 2048., 2560.]],
+                [
+                    [
+                        [[u'FSC-A', 921., 2150.], [u'SSC-A', 102., 921.]],
+                        [
+                            [
+                                [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
+                                [
+                                    [
+                                        [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
+                                        []
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+
+    def _get_init_nested_list_(self):
+        self.init_nested_list = \
+            [
+                [[u'SSC-H', 1003., 3011.], [u'CD45', 1024., 3071.]],
+                [
+                    [
+                        [[u'FSC-A', 1083., 3091.], [u'SSC-A', 1024., 3071.]],
+                        [
+                            [
+                                [[u'CD5', 1023., 3069.], [u'CD19', 1024., 3072.]],
+                                [
+                                    [
+                                        [[u'CD10', 1024., 3071.], [u'CD79b', 1026., 3078.]],
+                                        []
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
 
 
 class Cll4d2pInput(CLLInputBase):
@@ -228,7 +316,7 @@ class Cll4d2pInput(CLLInputBase):
                 ]
             ],
                 [
-                    [[u'CD38', 1024., 3071. ], [u'CD20', 1024., 3071.]],
+                    [[u'CD38', 1024., 3071.], [u'CD20', 1024., 3071.]],
                     [
                         [
                             [[u'Anti-Kappa', 1024., 3072.], [u'Anti-Lambda', 1023., 3070.]],
@@ -269,3 +357,147 @@ class Cll4d2pInput(CLLInputBase):
                        self.x_eval.tolist()]
         self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
         self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
+
+
+class Cll2pFullInput(Cll4d2pInput):
+    def __init__(self, hparams):
+        self.hparams = hparams
+        self.n_panels = 2
+
+        self.features = [['FSC-A', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b'],
+                         ['FSC-A', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD38', 'CD20', 'Anti-Lambda',
+                          'Anti-Kappa']]
+        self.features_full = [['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3'], [
+            'FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD38', 'CD20', 'Anti-Lambda', 'Anti-Kappa']]
+        self.feature2id = [dict((self.features[0][i], i) for i in range(len(self.features[0]))),
+                           dict((self.features[1][i], i) for i in range(len(self.features[1])))]
+
+        self._load_data_()
+        self._fill_empty_samples_()
+        self._get_reference_nested_list_()
+        self._get_init_nested_list_()
+        self._normalize_()
+        self._construct_()
+        self.split()
+
+        self.x = [[torch.tensor(_[0], dtype=torch.float32), torch.tensor(_[1], dtype=torch.float32)] for _ in
+                  self.x_list]
+        self.y = torch.tensor(self.y_list, dtype=torch.float32)
+
+    def _load_data_(self):
+        DATA_DIR = '../data/cll/'
+        CYTOMETRY_DIR_PB1 = DATA_DIR + "PB1_whole_mqian/"
+        CYTOMETRY_DIR_PB2 = DATA_DIR + "PB2_whole_mqian/"
+        DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
+        # self.x_list = [[x_pb1_idx, x_pb2_idx] for idx in range(n_samples)] # x_pb1_idx, x_pb2_idx are numpy arrays
+        # self.y_list = [y_idx for idx in range(n_samples)]
+        if self.hparams['load_from_pickle']:
+            with open(DATA_DIR + "filtered_2p_full_x_list.pkl", 'rb') as f:
+                self.x_list = pickle.load(f)
+            with open(DATA_DIR + 'y_2p_list.pkl', 'rb') as f:
+                self.y_list = pickle.load(f)
+        else:
+            x, y = dh.load_cll_data_2p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR_PB1, CYTOMETRY_DIR_PB2,
+                                       self.features_full[0], self.features_full[1])
+            x_8d_pb1 = dh.filter_cll_8d_pb1([_[0] for _ in x])
+            x_10d_pb2 = dh.filter_cll_10d_pb2([_[1] for _ in x])
+            x_4d_2p = [[x_8d_pb1[sample_idx], x_10d_pb2[sample_idx]] for sample_idx in range(len(x_8d_pb1))]
+            with open(DATA_DIR + 'filtered_2p_full_x_list.pkl', 'wb') as f:
+                pickle.dump(x_4d_2p, f)
+            with open(DATA_DIR + 'y_2p_list.pkl', 'wb') as f:
+                pickle.dump(y, f)
+            self.x_list, self.y_list = x_4d_2p, y
+
+    def _get_reference_nested_list_(self):
+        self.reference_nested_list = \
+            [
+                [
+                    [[u'SSC-H', 102., 921.], [u'CD45', 2048., 2560.]],
+                    [
+                        [
+                            [[u'FSC-A', 921., 2150.], [u'SSC-A', 102., 921.]],
+                            [
+                                [
+                                    [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
+                                    [
+                                        [
+                                            [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
+                                            []
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    [[u'SSC-H', 102., 921.], [u'CD45', 2048., 2560.]],
+                    [
+                        [
+                            [[u'FSC-A', 921., 2150.], [u'SSC-A', 102., 921.]],
+                            [
+                                [
+                                    [[u'CD38', 0., 1740.], [u'CD20', 614., 2252.]],
+                                    [
+                                        [
+                                            [[u'Anti-Kappa', 1536., 3481.], [u'Anti-Lambda', 0., 1536.]],
+                                            []
+                                        ],
+                                        [
+                                            [[u'Anti-Kappa', 0., 1536.], [u'Anti-Lambda', 1536., 3481.]],
+                                            []
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+
+    def _get_init_nested_list_(self):
+        self.init_nested_list = \
+            [
+                [
+                    [[u'SSC-H', 1003., 3011.], [u'CD45', 1024., 3072.]],
+                    [
+                        [
+                            [[u'FSC-A', 1082., 3091.], [u'SSC-A', 1023., 3071.]],
+                            [
+                                [
+                                    [[u'CD5', 1023., 3069.], [u'CD19', 1023., 3071.]],
+                                    [
+                                        [
+                                            [[u'CD10', 1024., 3071.], [u'CD79b', 1025., 3077.]],
+                                            []
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    [[u'SSC-H', 1003., 3011.], [u'CD45', 1023., 3070.]],
+                    [
+                        [
+                            [[u'FSC-A', 1082., 3090.], [u'SSC-A', 1023., 3071.]],
+                            [
+                                [
+                                    [[u'CD38', 1024., 3071.], [u'CD20', 1024., 3071.]],
+                                    [
+                                        [
+                                            [[u'Anti-Kappa', 1024., 3072.], [u'Anti-Lambda', 1023., 3070.]],
+                                            []
+                                        ],
+                                        [
+                                            [[u'Anti-Kappa', 1024., 3072.], [u'Anti-Lambda', 1023., 3070.]],
+                                            []
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
