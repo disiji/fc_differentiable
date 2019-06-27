@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
+#used only for referenceTree object, cuts here don't have to be passed through sigmoid activations
 class Gate(object):
     def __init__(self, gate_tuple, features2id):
         """
@@ -42,7 +42,7 @@ class ReferenceTree(object):
         print("n_children and n_leafs in reference tree: (%d, %d), and isLeaf = %r" % (
             self.n_children, self.n_leafs, self.isLeaf))
 
-
+#cuts here have to passed through sigmoid activation to get boundaries in (0, 1)
 class ModelNode(nn.Module):
     def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=1. / 4):
         """

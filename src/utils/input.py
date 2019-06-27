@@ -49,7 +49,7 @@ class Cll4dInput(CLLInputBase):
         self.features_full = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
         self.feature2id = dict((self.features[i], i) for i in range(len(self.features)))
 
-        self._load_data_()
+        self._load_data_(hparams)
         self._get_reference_nested_list_()
         self._get_init_nested_list_()
         self._normalize_()
@@ -59,24 +59,28 @@ class Cll4dInput(CLLInputBase):
         self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
 
-    def _load_data_(self):
-        DATA_DIR = '../data/cll/'
+    def _load_data_(self, hparams):
+        #DATA_DIR = '../data/cll/'
+        X_DATA_PATH = hparams['data']['features_path']
+        Y_DATA_PATH = hparams['data']['labels_path']
+        DATA_DIR = '../data/cll'
         CYTOMETRY_DIR = DATA_DIR + "PB1_whole_mqian/"
         DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
 
         # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
         # y: a list of labels; 1 is CLL, 0 is healthy
         if self.hparams['load_from_pickle']:
-            with open(DATA_DIR + "filtered_4d_1p_x_list.pkl", 'rb') as f:
+            with open(X_DATA_PATH, 'rb') as f:
                 self.x_list = pickle.load(f)
-            with open(DATA_DIR + 'y_1p_list.pkl', 'rb') as f:
+                print('Number of samples: %d' %(len(self.x_list)))
+            with open(Y_DATA_PATH, 'rb') as f:
                 self.y_list = pickle.load(f)
         else:
             x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
             x_4d = dh.filter_cll_4d_pb1(x)
-            with open(DATA_DIR + 'filtered_4d_1p_x_list.pkl', 'wb') as f:
+            with open(X_DATA_PATH, 'wb') as f:
                 pickle.dump(x_4d, f)
-            with open(DATA_DIR + 'y_1p_list.pkl', 'wb') as f:
+            with open(Y_DATA_PATH, 'wb') as f:
                 pickle.dump(y, f)
             self.x_list, self.y_list = x_4d, y
 
@@ -117,13 +121,22 @@ class Cll4dInput(CLLInputBase):
             self.init_tree = None
 
     def split(self, random_state=123):
-        self.x_train, self.x_eval, self.y_train, self.y_eval = train_test_split(self.x_list, self.y_list,
-                                                                                test_size=self.hparams['test_size'],
-                                                                                random_state=random_state)
-        self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
-        self.x_eval = [torch.tensor(_, dtype=torch.float32) for _ in self.x_eval]
-        self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
-        self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
+        if self.hparams['test_size'] == 0.:
+            self.x_train = self.x_list
+            self.y_train = self.y_list
+            self.x_eval = None
+            self.y_eval = None
+            
+            self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
+            self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
+        else:
+            self.x_train, self.x_eval, self.y_train, self.y_eval = train_test_split(self.x_list, self.y_list,
+                                                                                    test_size=self.hparams['test_size'],
+                                                                                    random_state=random_state)
+            self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
+            self.x_eval = [torch.tensor(_, dtype=torch.float32) for _ in self.x_eval]
+            self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
+            self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
 
 
 class Cll4d2pInput(CLLInputBase):

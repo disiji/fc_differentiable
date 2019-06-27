@@ -69,9 +69,11 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
 
     # optimal gates
     train_tracker = Tracker()
-    eval_tracker = Tracker()
+    eval_tracker = None
+    if not(hparams['test_size'] == 0.):
+        eval_tracker = Tracker()
+        eval_tracker.model_init = deepcopy(model)
     train_tracker.model_init = deepcopy(model)
-    eval_tracker.model_init = deepcopy(model)
     model_checkpoint_dict = {}
 
     if model_checkpoint:
@@ -105,36 +107,170 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
         if epoch % hparams['n_epoch_eval'] == 0:
             # stats on train
             train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, i)
-            eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, i)
+            if not(hparams['test_size'] == 0.):
+                eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, i)
 
             # compute
-            print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (
-                epoch, i, train_tracker.loss[-1], eval_tracker.loss[-1]))
-            print('[Epoch %d, batch %d] training, eval ref_reg_loss: %.3f, %.3f' % (
-                epoch, i, train_tracker.ref_reg_loss[-1], eval_tracker.ref_reg_loss[-1]))
-            print('[Epoch %d, batch %d] training, eval size_reg_loss: %.3f, %.3f' % (
-                epoch, i, train_tracker.size_reg_loss[-1], eval_tracker.size_reg_loss[-1]))
-            print('[Epoch %d, batch %d] training, eval corner_reg_loss: %.3f, %.3f' % (
-                epoch, i, train_tracker.corner_reg_loss[-1], eval_tracker.corner_reg_loss[-1]))
-            print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
-                epoch, i, train_tracker.acc[-1], eval_tracker.acc[-1]))
+            if hparams['test_size'] == 0.:
+                loss_tuple = (epoch, i, 'full loss:', train_tracker.loss[-1], 'ref_reg:', train_tracker.ref_reg_loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'corner_reg:', train_tracker.corner_reg_loss[-1], 'acc:', train_tracker.acc[-1])
+                print('[Epoch %d, batch %d] %s %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
+            else:
+                print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (
+                    epoch, i, train_tracker.loss[-1], eval_tracker.loss[-1]))
+                print('[Epoch %d, batch %d] training, eval ref_reg_loss: %.3f, %.3f' % (
+                    epoch, i, train_tracker.ref_reg_loss[-1], eval_tracker.ref_reg_loss[-1]))
+                print('[Epoch %d, batch %d] training, eval size_reg_loss: %.3f, %.3f' % (
+                    epoch, i, train_tracker.size_reg_loss[-1], eval_tracker.size_reg_loss[-1]))
+                print('[Epoch %d, batch %d] training, eval corner_reg_loss: %.3f, %.3f' % (
+                    epoch, i, train_tracker.corner_reg_loss[-1], eval_tracker.corner_reg_loss[-1]))
+                print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
+                    epoch, i, train_tracker.acc[-1], eval_tracker.acc[-1]))
 
         # epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]
         # epoch_list = [0, 100, 200, 300, 500, 700, 1000]
-        epoch_list = [0, 50, 100, 200, 300, 400, 500]
-
+        #epoch_list = [0, 50, 100, 200, 300, 400, 500]
+        epoch_list = hparams['seven_epochs_for_gate_motion_plot']
         if model_checkpoint:
             if epoch+1 in epoch_list:#[100, 200, 300, 400, 500, 600]:
                 model_checkpoint_dict[epoch+1] = deepcopy(model)
-
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))
-    print("Optimal acc on train and eval during training process: %.3f at [Epoch %d, batch %d] "
+    if not(hparams['test_size']) == 0.:
+        print("Optimal acc on train and eval during training process: %.3f at [Epoch %d, batch %d] "
           "and %.3f at [Epoch %d, batch %d]" % (
               train_tracker.acc_opt, train_tracker.n_iter_opt[0], train_tracker.n_iter_opt[1], eval_tracker.acc_opt,
               eval_tracker.n_iter_opt[0],
               eval_tracker.n_iter_opt[1],))
 
     return model, train_tracker, eval_tracker, time.time() - start, model_checkpoint_dict
+
+def convert_gate(gate):
+    if type(gate).__name__ == 'ModelNode':
+        print('hiiiii')
+        gate_low1 = torch.sigmoid(gate.gate_low1_param).item()
+
+        gate_low2 = torch.sigmoid(gate.gate_low2_param).item()
+
+        gate_upp1 = torch.sigmoid(gate.gate_upp1_param).item()
+
+        gate_upp2 = torch.sigmoid(gate.gate_upp2_param).item()
+    
+    else:
+        gate_low1 = gate.gate_low1
+
+        gate_low2 = gate.gate_low2
+
+        gate_upp1 = gate.gate_upp1
+
+        gate_upp2 = gate.gate_upp2
+
+    return([gate_low1, gate_upp1, gate_low2, gate_upp2])
+
+def get_dafi_intersection_over_union_p1_avg(model, dafi_tree):
+    root_model = model.root
+    root_dafi = dafi_tree.root
+    ratio = 0.
+    ratio += get_intersection_over_union(root_model, root_dafi)
+
+    keys_model = [key for key in model.children_dict.keys()]
+    keys_DAFI = [key for key in dafi_tree.children_dict.keys()]
+ 
+
+    child_model = model.children_dict[keys_model[1]][0]
+    child_dafi = dafi_tree.children_dict[keys_DAFI[1]][0]
+    ratio += get_intersection_over_union(child_model, child_dafi)
+    return ratio/2.
+    
+
+
+def get_intersection_over_union(gate_model, gate_dafi):
+    if not((gate_model.gate_dim1 == gate_dafi.gate_dim1) and (gate_model.gate_dim2 == gate_dafi.gate_dim2)):
+        print(gate_model.gate_dim1, gate_dafi.gate_dim1, 'dim1')
+        print(gate_model.gate_dim2, gate_dafi.gate_dim2, 'dim2')
+        raise ValueError('Gates are not from the same pair of axes/makers, so doesnt make sense to compute overlap-they\'re on different scatter plots!')
+
+    flat_gate_model = convert_gate(gate_model)
+    flat_gate_dafi = convert_gate(gate_dafi)
+
+    dafi_overlap = get_overlap_p1_single_node(flat_gate_model, flat_gate_dafi)
+    print(gate_model, gate_dafi)
+    print(dafi_overlap, flat_gate_model, flat_gate_dafi) 
+    gate_model_area = (flat_gate_model[1] - flat_gate_model[0]) * (flat_gate_model[3] - flat_gate_model[2])
+    gate_dafi_area = (flat_gate_dafi[1] - flat_gate_dafi[0]) * (flat_gate_dafi[3] - flat_gate_dafi[2])
+
+    ratio_inter_union = dafi_overlap/(gate_dafi_area + gate_model_area - dafi_overlap)
+
+    return ratio_inter_union
+   
+def test_overlap_p1_single_node():
+    test_gate1 = [0, .5, 0, .25]
+    test_gate2 = [.25, .5, 0, .25]
+    test_gate3 = [0, .25, 0, .1]
+    test_gate4 = [0, 1, 0, 1]
+    assert(get_overlap_p1_single_node(test_gate1, test_gate1) == 1/8)
+    assert(get_overlap_p1_single_node(test_gate1, test_gate2) == 1/16)
+    assert(get_overlap_p1_single_node(test_gate2, test_gate1) == 1/16)
+    assert(get_overlap_p1_single_node(test_gate1, test_gate3) == 1/40)
+    assert(get_overlap_p1_single_node(test_gate3, test_gate1) == 1/40)
+    assert(get_overlap_p1_single_node(test_gate1, test_gate4) == 1/8) 
+
+def get_overlap_p1_single_node(flat_gate_model, flat_gate_dafi):
+    if no_overlap(flat_gate_model, flat_gate_dafi):
+        return 0.
+    d1_cuts = [flat_gate_model[0], flat_gate_dafi[0], flat_gate_model[1], flat_gate_dafi[1]]
+    d2_cuts = [flat_gate_model[2], flat_gate_dafi[2], flat_gate_model[3], flat_gate_dafi[3]]
+
+    d1_length = sorted(d1_cuts)[2] - sorted(d1_cuts)[1]
+    d2_length = sorted(d2_cuts)[2] - sorted(d2_cuts)[1]
+
+    return d1_length * d2_length
+    
+    
+def no_overlap(flat_gate_model, flat_gate_dafi):
+    no_d1_overlap = (flat_gate_model[1] < flat_gate_dafi[0]) or (flat_gate_dafi[1] < flat_gate_model[0])
+
+    no_d2_overlap = (flat_gate_model[3] < flat_gate_dafi[2]) or (flat_gate_dafi[3] < flat_gate_model[2])
+
+    return (no_d1_overlap or no_d2_overlap)
+    
+        
+        
+#def get_dafi_overlap_all_nodes(model, dafi_tree):
+#    this_level_model = [model.root]
+#    this_level_dafi = dafi_tree
+#    while this_level_model:
+#        next_level_model = list()
+#        next_level_dafi = list()
+#        for model_node, dafi_tree_node in zip(this_level_model, :
+#            dafi_tree_node = dafi_tree[0]
+#            get_dafi_overlap(model_node, dafi_tree_node)
+def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, train_tracker, eval_tracker, run_time):
+    y_score = model(input.x, input.y)['y_pred'].detach().numpy()
+    y_pred = (y_score > 0.5) * 1.0
+    overall_accuracy = sum(y_pred == input.y.numpy()) * 1.0 / len(input.x)
+    dafi_ratio_inter_union = get_dafi_intersection_over_union_p1_avg(model, dafi_tree)
+    log_loss = model(input.x, input.y)['log_loss'].detach().numpy() 
+
+    with open('../output/%s/model_classifier_weights.csv' % hparams['experiment_name'], "a+") as file:
+        bias = str(model.linear.bias.detach().item())
+        weights = ', '.join(map(str, model.linear.weight.data[0].numpy()))
+        file.write('%d, %s, %s\n' % (hparams['random_state'], bias, weights))
+
+
+    with open('../output/%s/results_cll_4D.csv' % hparams['experiment_name'], "a+") as file:
+        results_names = 'seed, overall_acc, log_loss, dafi_ratio_inter_union, run_time'
+        file.write(results_names + '\n')
+        file.write(
+            "%d, %.3f, %.3f, %.3f, %.3f\n" % (
+                hparams['random_state'], overall_accuracy,
+                log_loss, dafi_ratio_inter_union, run_time
+            ))
+
+    return {
+        "overall_accuracy": overall_accuracy,
+        'log_loss': log_loss,
+        'dafi_overlap_ratio': dafi_ratio_inter_union,
+        'run_time': run_time
+        }
 
 
 def run_output(model, dafi_tree, hparams, input, train_tracker, eval_tracker, run_time):
@@ -312,8 +448,10 @@ def run_gate_motion_step(hparams, input, model_checkpoint_dict, train_tracker, n
 def run_gate_motion_1p(hparams, input, model_checkpoint_dict):
 
     filename = "../output/%s/gate_motion.png" % hparams['experiment_name']
+    print(filename)
     # select checkpoints to plot, limit the length to 4
-    epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]#[100, 200, 300, 400, 500, 600]
+    #epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]#[100, 200, 300, 400, 500, 600]
+    epoch_list = hparams['seven_epochs_for_gate_motion_plot']
     util_plot.plot_motion_p1(input, epoch_list, model_checkpoint_dict, filename)
 
 def run_gate_motion_2p(hparams, input, model_checkpoint_dict):
@@ -354,3 +492,7 @@ def run_write_prediction(model_tree, dafi_tree, input, hparams):
         file.write("%d\n" % hparams['random_state'])
         np.savetxt(file, dafi_tree(input.x, input.y)['leaf_logp'].detach().numpy(), delimiter=',')
         file.write('\n')
+
+
+if __name__ == '__main__':
+    test_overlap_p1_single_node()

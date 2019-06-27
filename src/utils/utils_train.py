@@ -35,7 +35,8 @@ class Tracker():
         self.acc.append(sum(y_pred == y_true.numpy()) * 1.0 / y_true.shape[0])
         self.precision.append(precision_score(y_true.numpy(), y_pred, average='macro'))
         self.recall.append(recall_score(y_true.numpy(), y_pred, average='macro'))
-        self.roc_auc_score.append(roc_auc_score(y_true.numpy(), y_pred, average='macro'))
+        #removed to see if it gives a speed improvement
+        #self.roc_auc_score.append(roc_auc_score(y_true.numpy(), y_pred, average='macro')) 
         self.brier_score_loss.append(brier_score_loss(y_true.numpy(), output['y_pred'].detach().numpy()))
         self.log_decision_boundary.append(
             (-model.linear.bias.detach() / model.linear.weight.detach()))

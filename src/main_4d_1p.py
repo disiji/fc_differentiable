@@ -25,27 +25,20 @@ default_hparams = {
     'learning_rate_classifier': 0.05,
     'learning_rate_gates': 0.05,
     'batch_size': 10,
-    'n_epoch': 1000,
+    'n_epoch': 1000, 
+    'seven_epochs_for_gate_motion_plot': [0, 50, 100, 200, 300, 400, 500],
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
-    'n_run': 100,
-    'train_alternate': True
+    'n_run': 2,
+    'train_alternate': True,
+    'output': {
+        'type': 'full'
+    }
 }
 
 
-def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True):
-    hparams = default_hparams
-    with open(yaml_filename, "r") as f_in:
-        yaml_params = yaml.safe_load(f_in)
-    hparams.update(yaml_params)
-    hparams['init_method'] = "dafi_init" if hparams['dafi_init'] else "random_init"
-    if hparams['train_alternate']:
-        hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
-                hparams['n_mini_batch_update_gates'] - 1)
-    else:
-        hparams['n_epoch_dafi'] = hparams['n_epoch']
-    print(hparams)
+def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
@@ -84,9 +77,15 @@ def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True)
         # dafi_tree = run_train_dafi(dafi_tree, hparams, cll_4d_input)
         model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \
             run_train_model(model_tree, hparams, cll_4d_input, model_checkpoint=model_checkpoint)
-        output_metric_dict = run_output(
-            model_tree, dafi_tree, hparams, cll_4d_input, train_tracker, eval_tracker, run_time)
-
+        if hparams['output']['type'] == 'full':
+            output_metric_dict = run_output(
+                model_tree, dafi_tree, hparams, cll_4d_input, train_tracker, eval_tracker, run_time)
+        elif hparams['output']['type'] == 'lightweight':
+            output_metric_dict = run_lightweight_output_no_split_no_dafi(
+                model_tree, dafi_tree, hparams, cll_4d_input, train_tracker, eval_tracker, run_time)
+        else:
+            raise ValueError('Output type not recognized')
+            
         # only plot once
         # # if not os.path.isfile('../output/%s/metrics.png' % hparams['experiment_name']) and plot_and_write_output:
         # run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
@@ -98,4 +97,31 @@ def run_single_panel(yaml_filename, random_state_start=0, model_checkpoint=True)
 
 if __name__ == '__main__':
     # run_single_panel(sys.argv[1], int(sys.argv[2]), True)
-    run_single_panel("../configs/test.yaml", 1, True)
+    hparams = default_hparams
+    yaml_filename = '../configs/cll_4d_1p_reg_grid_srch.yaml'
+    with open(yaml_filename, "r") as f_in:
+        yaml_params = yaml.safe_load(f_in)
+    hparams.update(yaml_params)
+    hparams['init_method'] = "dafi_init" if hparams['dafi_init'] else "random_init"
+    if hparams['train_alternate']:
+        hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
+                hparams['n_mini_batch_update_gates'] - 1)
+    else:
+        hparams['n_epoch_dafi'] = hparams['n_epoch']
+    #Change this two lines to run in parallel
+    
+    grid_neg_box = [1.]
+    grid_corner_reg = [1., 0., 0.1]
+
+    
+    grid_gate_size = [0.1]
+    #run_single_panel(hparams, 1, True)
+    for neg_box_reg in grid_neg_box:
+        for corner_reg in grid_corner_reg:
+            for gate_size_reg in grid_gate_size:
+                hparams['negative_box_penalty'] = neg_box_reg
+                hparams['corner_penalty'] = corner_reg
+                hparams['gate_size_penalty'] = gate_size_reg
+                hparams['experiment_name'] = 'grid_search_neg_box=%.2f_corner=%.2f_gate_size=%.2f' %(neg_box_reg, corner_reg, gate_size_reg)
+                print(hparams)
+                run_single_panel(hparams, 1, True)
