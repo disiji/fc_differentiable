@@ -115,6 +115,19 @@ def filter_cll_4d_pb1(x_list):
 
     return filtered_x_list_4d
 
+def filter_cll_8d_pb1(x_list):
+    """
+
+    :param x_list:
+    :return:
+    """
+    idx = 3
+    filtered_x_list = [filter_slope(x, 0, 1, 2048, 4096, 2048, 2560) for x in x_list]
+    print('After first slope gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list_8d = [x[:, [0,2,3,4,5,6,7,8]] for x in filtered_x_list]
+
+    return filtered_x_list_8d
+
 
 def filter_cll_4d_pb2(x_list):
     """
@@ -136,6 +149,20 @@ def filter_cll_4d_pb2(x_list):
     filtered_x_list_4d = [x_list[:, 7:11] for x_list in filtered_x_list]
 
     return filtered_x_list_4d
+
+
+def filter_cll_10d_pb2(x_list):
+    """
+     :param x_list: list of numpy arrays per sample
+    :return: list of filtered numpy arrays per sample
+    """
+    idx = 3
+
+    filtered_x_list = [filter_slope(x, 0, 1, 2048, 4096, 2048, 2560) for x in x_list]
+    print('After first slope gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
+    filtered_x_list_10d = [x_list[:, [0,2,3,4,5,6,7,8,9,10]] for x_list in filtered_x_list]
+
+    return filtered_x_list_10d
 
 
 def filter_cll_leaf_pb1(x_list):
