@@ -1,0 +1,13 @@
+Bugs:
+    1. When n_runs=1 the run doesn't enter the training loop properly and output doesn't seem to be written.
+    
+
+Refactoring:
+    1. Not a bug, but the input classes should be refactored so that the splitting and the normalization are handled in a parent class all the individual input classes inherit from 
+    2. utils_train should be renamed to match the class inside of it since thats the only thing inside it. Also this is confusing since train.py contains a bunch of training utitilies, naming scheme just need to be rethought
+    3. input classes also need to have many of the per class specific variables changed into params to avoid needing to 'fine tune' each class's parameters inside the file. For example:make the paths passable arguments that way the load data class can become a function in the parent class with fixed behavior.
+    4. put epoch/test size into a train category in the yaml file and use string replacement to update where those params are used
+    5. Similarly as to four add a regularization category to the yaml file
+    6. change name in hparams of regularization penalty to be more specific ie ref_reg. (Theyre all regularization penalty terms!)
+    7. Change hparams to params everywhere
+    8. Make a function to extract a list of gates as lists of four numbers from a gating tree object (should handle either the reference tree object or the model tree object) root should be at front, and order determined by a bfs  (note make sure the order is the same when called on the reference tree as when called on the model tree

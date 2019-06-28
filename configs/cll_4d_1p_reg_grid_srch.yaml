@@ -1,0 +1,12 @@
+n_epoch: 750
+n_epoch_eval: 100
+test_size: 0.0
+
+output:
+    type: 'lightweight'
+data:
+    features_path: '../data/cll/x_dev_4d_1p.pkl'
+    labels_path: '../data/cll/y_dev_4d_1p.pkl'
+#seven_epochs_for_gate_motion_plot: [0, 10, 20, 30, 40, 50, 60]
+seven_epochs_for_gate_motion_plot: [0, 140, 280, 320, 460, 600, 750]
+#n_run: 1

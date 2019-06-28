@@ -77,7 +77,7 @@ class ModelNode(nn.Module):
 
     def __log_odds_ratio__(self, p):
         """
-        retur log(p/1-p)
+        return log(p/1-p)
         :param p: a float
         :return: a float
         """
@@ -162,9 +162,9 @@ class ModelTree(nn.Module):
         self.n_sample_features = reference_tree.n_leafs
         # define parameters in the logistic regression model
         if self.classifier:
-            self.linear = nn.Linear(self.n_sample_features, 1)
-            self.linear.weight.data.exponential_(1.0)
-            self.linear.bias.data.fill_(-1.0)
+            self.linear = nn.Linear(self.n_sample_features, 1) #default behavior is probably Guassian- check this
+            #self.linear.weight.data.exponential_(1.0) #TODO add option for initialization with normal as well and uncomment
+            #self.linear.bias.data.fill_(-1.0)
             if self.loss_type == "logistic":
                 self.criterion = nn.BCEWithLogitsLoss()
             elif self.loss_type == "MSE":
@@ -191,7 +191,7 @@ class ModelTree(nn.Module):
         self.children_dict.update({str(id(node)): child_list})
         return node
 
-    def forward(self, x, y=None):
+    def forward(self, x, y=None, detach_logistic_params=False):
         """
 
         :param x: a list of tensors
@@ -227,7 +227,7 @@ class ModelTree(nn.Module):
                     output['ref_reg_loss'] += ref_reg_penalty * self.regularisation_penalty / len(x)
                     output['size_reg_loss'] += size_reg_penalty * self.gate_size_penalty / len(x)
                     output['corner_reg_loss'] += corner_reg_penalty * self.corner_penalty / len(x)
-                    pathlogp = pathlogp + logp
+                    pathlogp = pathlogp + logp 
                     if len(self.children_dict[str(id(node))]) > 0:
                         for child_node in self.children_dict[str(id(node))]:
                             next_level.append((child_node, pathlogp))
@@ -239,10 +239,13 @@ class ModelTree(nn.Module):
         loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss']
 
         output['leaf_probs'] = leaf_probs
-        output['leaf_logp'] = torch.log(leaf_probs)
+        output['leaf_logp'] = torch.log(leaf_probs)  # Rob: This is weird...
 
         if self.classifier:
-            output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
+            if detach_logistic_params:
+                output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'].detach())).squeeze(1)
+            else:
+                output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
 
         if y is not None:
             if self.classifier:

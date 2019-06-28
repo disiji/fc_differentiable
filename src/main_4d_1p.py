@@ -47,7 +47,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
         for key, val in hparams.items():
             writer.writerow([key, val])
 
-    cll_4d_input = Cll4dInput(hparams)
+    cll_4d_input = Cll4d1pInput(hparams)
 
     for random_state in range(random_state_start, hparams['n_run']):
         hparams['random_state'] = random_state

@@ -47,6 +47,39 @@ def run_train_dafi(dafi_model, hparams, input):
     print("Running time for training classifier with DAFi gates: %.3f seconds." % (time.time() - start))
     return dafi_model
 
+#Does training with full_batch for just the classifier weights until convergence with adam. Also no tr/te split-for us with just dev data
+def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_thresh=1e-3):
+    start = time.time() 
+    classifier_params = [model.linear.weight, model.linear.bias]
+    optimizer_classifier = torch.optim.Adam(classifier_params, lr=adam_lr)
+    prev_loss = -10 #making sure the loop starts
+    delta = 50
+    iters = 0
+    while delta > conv_thresh:
+        optimizer_classifier.zero_grad()
+        output = model(x_tensor_list, y, detach_logistic_params=True)
+        log_loss = output['log_loss']
+        log_loss.backward()
+        optimizer_classifier.step()
+        delta = torch.abs(log_loss - prev_loss)
+        prev_loss = log_loss
+        iters += 1
+        if iters%100 == 0:
+            print('%.2f ' %(delta), end='')
+            if iters%500 == 0:
+                print('\n')
+    print('\n')
+    print('time taken %d, with loss %.2f' %(time.time() - start, log_loss.detach().item()))
+    print(output['emp_reg_loss'])
+    return model
+    
+         
+
+        
+
+
+
+
 
 def run_train_model(model, hparams, input, model_checkpoint=False):
     """
