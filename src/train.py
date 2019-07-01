@@ -69,7 +69,7 @@ def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_th
         #forward pass through entire model is uneccessary!
         log_loss = BCEWithLogits(model.linear(log_features).squeeze(1), y)
         optimizer_classifier.zero_grad()
-        log_loss.backward(retain_graph=True)
+        log_loss.backward()
         optimizer_classifier.step()
         delta = torch.abs(log_loss - prev_loss)
         prev_loss = log_loss
@@ -143,7 +143,7 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
             else:
                 output = model(x_batch, y_batch)
             loss = output['loss']
-            loss.backward(retain_graph=True)#check this carefully, also make this an if statement only if runnign log reg to conv
+            loss.backward()#check this carefully, also make this an if statement only if runnign log reg to conv
             if hparams['train_alternate'] == True:
                 if hparams['run_logistic_to_convergence'] == True:
                     #kinda odd that this function uses its own optimizer in this case, may want to scrutinize this later
