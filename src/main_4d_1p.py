@@ -26,7 +26,7 @@ default_hparams = {
     'learning_rate_gates': 0.05,
     'batch_size': 10,
     'n_epoch': 1000, 
-    'seven_epochs_for_gate_motion_plot': [0, 50, 100, 200, 300, 400, 500],
+    'seven_epochs_for_gate_motion_plot': [0, 100, 300, 500, 700, 900, 999],
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
@@ -47,7 +47,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
         for key, val in hparams.items():
             writer.writerow([key, val])
 
-    cll_4d_input = Cll4dInput(hparams)
+    cll_4d_input = Cll4d1pInput(hparams)
 
     for random_state in range(random_state_start, hparams['n_run']):
         hparams['random_state'] = random_state
@@ -98,7 +98,8 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 if __name__ == '__main__':
     # run_single_panel(sys.argv[1], int(sys.argv[2]), True)
     hparams = default_hparams
-    yaml_filename = '../configs/cll_4d_1p_reg_grid_srch.yaml'
+#    yaml_filename = '../configs/cll_4d_1p_reg_grid_srch.yaml'
+    yaml_filename = '../configs/cll_4d_1p_default.yaml'
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
@@ -108,20 +109,22 @@ if __name__ == '__main__':
                 hparams['n_mini_batch_update_gates'] - 1)
     else:
         hparams['n_epoch_dafi'] = hparams['n_epoch']
+
+    run_single_panel(hparams, 1, True)
     #Change this two lines to run in parallel
     
-    grid_neg_box = [1.]
-    grid_corner_reg = [1., 0., 0.1]
+    #grid_neg_box = [1.]
+    #grid_corner_reg = [1., 0., 0.1]
 
-    
-    grid_gate_size = [0.1]
-    #run_single_panel(hparams, 1, True)
-    for neg_box_reg in grid_neg_box:
-        for corner_reg in grid_corner_reg:
-            for gate_size_reg in grid_gate_size:
-                hparams['negative_box_penalty'] = neg_box_reg
-                hparams['corner_penalty'] = corner_reg
-                hparams['gate_size_penalty'] = gate_size_reg
-                hparams['experiment_name'] = 'grid_search_neg_box=%.2f_corner=%.2f_gate_size=%.2f' %(neg_box_reg, corner_reg, gate_size_reg)
-                print(hparams)
-                run_single_panel(hparams, 1, True)
+    #
+    #grid_gate_size = [0.1]
+    ##run_single_panel(hparams, 1, True)
+    #for neg_box_reg in grid_neg_box:
+    #    for corner_reg in grid_corner_reg:
+    #        for gate_size_reg in grid_gate_size:
+    #            hparams['negative_box_penalty'] = neg_box_reg
+    #            hparams['corner_penalty'] = corner_reg
+    #            hparams['gate_size_penalty'] = gate_size_reg
+    #            hparams['experiment_name'] = 'grid_search_neg_box=%.2f_corner=%.2f_gate_size=%.2f' %(neg_box_reg, corner_reg, gate_size_reg)
+    #            print(hparams)
+    #            run_single_panel(hparams, 1, True)
