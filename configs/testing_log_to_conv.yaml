@@ -1,0 +1,22 @@
+experiment_name: 'testing_log_to_conv'
+n_epoch: 100
+n_epoch_eval: 10 #100
+test_size: 0.0
+
+gate_size_penalty: 0.
+regularization_penalty: 0.
+negative_box_penalty: 0.
+corner_penalty: 0.01
+batch_size: 35
+learning_rate_gates: .05 #trying a large number
+learning_rate_classifier: .05 
+
+output:
+    type: 'lightweight'
+data:
+    features_path: '../data/cll/x_dev_4d_1p.pkl'
+    labels_path: '../data/cll/y_dev_4d_1p.pkl'
+seven_epochs_for_gate_motion_plot: [0, 10, 20, 30, 40, 50, 60]
+run_logistic_to_convergence: True
+#seven_epochs_for_gate_motion_plot: [0, 140, 280, 320, 460, 600, 750]
+#n_run: 1

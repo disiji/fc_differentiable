@@ -243,9 +243,8 @@ class ModelTree(nn.Module):
 
         if self.classifier:
             if detach_logistic_params:
-                output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'].detach())).squeeze(1)
-            else:
-                output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
+                output['leaf_logp'] = output['leaf_logp'].detach()
+            output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
 
         if y is not None:
             if self.classifier:

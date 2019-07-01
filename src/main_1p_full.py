@@ -22,6 +22,8 @@ default_hparams = {
     'loss_type': 'logistic',  # or MSE
     'n_epoch_eval': 100,
     'n_mini_batch_update_gates': 50,
+    'run_logistic_to_convergence': False,
+    'train_alternate': True,
     'learning_rate_classifier': 0.05,
     'learning_rate_gates': 0.05,
     'batch_size': 10,
@@ -29,8 +31,7 @@ default_hparams = {
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
-    'n_run': 100,
-    'train_alternate': True
+    'n_run': 100
 }
 
 

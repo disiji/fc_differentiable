@@ -10,6 +10,7 @@ from utils.input import *
 from utils.utils_train import Tracker
 from utils.input import CLLInputBase
 
+import torch.nn as nn
 
 def run_train_dafi(dafi_model, hparams, input):
     """
@@ -48,29 +49,39 @@ def run_train_dafi(dafi_model, hparams, input):
     return dafi_model
 
 #Does training with full_batch for just the classifier weights until convergence with adam. Also no tr/te split-for us with just dev data
-def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_thresh=1e-3):
+def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_thresh=1e-10, verbose=True, log_features=None):
     start = time.time() 
     classifier_params = [model.linear.weight, model.linear.bias]
     optimizer_classifier = torch.optim.Adam(classifier_params, lr=adam_lr)
+    if log_features is None:
+        output = model(x_tensor_list, y, detach_logistic_params=True)
+        log_features = output['leaf_logp']
+    BCEWithLogits = nn.BCEWithLogitsLoss()
+    #these are called log_probs in the forwards function, but
+    #calling them log_features is more consistent with our
+    #previous usages in the paper and code
+    
     prev_loss = -10 #making sure the loop starts
     delta = 50
     iters = 0
     while delta > conv_thresh:
+        #features are fixed here, the only thing we need is the change in log loss from logistic params
+        #forward pass through entire model is uneccessary!
+        log_loss = BCEWithLogits(model.linear(log_features).squeeze(1), y)
         optimizer_classifier.zero_grad()
-        output = model(x_tensor_list, y, detach_logistic_params=True)
-        log_loss = output['log_loss']
-        log_loss.backward()
+        log_loss.backward(retain_graph=True)
         optimizer_classifier.step()
         delta = torch.abs(log_loss - prev_loss)
         prev_loss = log_loss
         iters += 1
+        if verbose:
+            print(log_loss.item())
         if iters%100 == 0:
-            print('%.2f ' %(delta), end='')
+            print('%.6f ' %(delta), end='')
             if iters%500 == 0:
                 print('\n')
     print('\n')
     print('time taken %d, with loss %.2f' %(time.time() - start, log_loss.detach().item()))
-    print(output['emp_reg_loss'])
     return model
     
          
@@ -123,15 +134,27 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
             idx_batch = [j for j in range(hparams['batch_size'] * i, hparams['batch_size'] * (i + 1))]
             optimizer_gates.zero_grad()
             optimizer_classifier.zero_grad()
-            output = model([x_train[j] for j in idx_batch], y_train[idx_batch])
+            x_batch = [x_train[j] for j in idx_batch]
+            y_batch = y_train[idx_batch]
+#            output = model([x_train[j] for j in idx_batch], y_train[idx_batch])
+            if hparams['run_logistic_to_convergence']:
+                output_detached = model(x_batch, y_batch, detach_logistic_params=True)
+                output = model(x_batch, y_batch)
+            else:
+                output = model(x_batch, y_batch)
             loss = output['loss']
-            loss.backward()
+            loss.backward(retain_graph=True)#check this carefully, also make this an if statement only if runnign log reg to conv
             if hparams['train_alternate'] == True:
-                if (len(x_train) // hparams['batch_size'] * epoch + i) % hparams['n_mini_batch_update_gates'] == 0:
-                    print("optimizing gates...")
+                if hparams['run_logistic_to_convergence'] == True:
+                    #kinda odd that this function uses its own optimizer in this case, may want to scrutinize this later
+                    run_train_only_logistic_regression(model, x_batch, y_batch, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
                     optimizer_gates.step()
                 else:
-                    optimizer_classifier.step()
+                    if (len(x_train) // hparams['batch_size'] * epoch + i) % hparams['n_mini_batch_update_gates'] == 0:
+                        print("optimizing gates...")
+                        optimizer_gates.step()
+                    else:
+                        optimizer_classifier.step()
             else:
                 optimizer_gates.step()
                 optimizer_classifier.step()

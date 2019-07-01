@@ -12,7 +12,7 @@ X_DEV_PATH = '../../data/cll/x_dev_4d_1p.pkl'
 Y_DEV_PATH = '../../data/cll/y_dev_4d_1p.pkl'
 COLORS = ['r', 'b', 'g', 'y', 'm', 'k']
 #for plotting with only the use of the CD19/CD5 and CD79b/CD10 gates
-def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_root_gate, num_steps, make_gif=False, x_data_dir=X_DEV_PATH, y_data_dir=Y_DEV_PATH, figsize=(5, 10)):
+def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_root_gate, num_steps, make_gif=False, x_data_dir=X_DEV_PATH, y_data_dir=Y_DEV_PATH, figsize=(5, 12)):
     x_list, y_list = load_data(x_data_dir, y_data_dir)
     x_list, offset, scale = dh.normalize_x_list(x_list)
     x_list = [torch.tensor(_, dtype=torch.float32) for _ in x_list]
@@ -20,11 +20,13 @@ def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_ro
     y_list = torch.tensor(y_list, dtype=torch.float32)
 
     #TODO make the entire function take in a params dict for the reg_weights
-    log_reg_lr = .01
+    log_reg_lr = .03 #3e-4
 
     model, dafi_tree = setup_model_and_dafi_tree(DAFI_root_gate, DAFI_leaf_gate, leaf_gate_init, offset, scale)
-    model = run_train_only_logistic_regression(model, x_list, y_list, log_reg_lr)
+    print('Training model for the first time')
+    model = run_train_only_logistic_regression(model, x_list, y_list, log_reg_lr, verbose=False)
     init_output = model.forward(x_list, y_list)
+    y_pred = (init_output['y_pred'].detach().numpy() > 0.5) * 1.0
     init_output = {item:init_output[item].detach().item() for item in init_output if item in ['log_loss', 'ref_reg_loss', 'emp_reg_loss', 'corner_reg_loss', 'size_reg_loss']}
 
     log_losses = [init_output['log_loss']]
@@ -32,6 +34,7 @@ def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_ro
     gate_size_regs = [init_output['size_reg_loss']]
     neg_regs = [init_output['emp_reg_loss']]
     corner_regs = [init_output['corner_reg_loss']]
+    accs = [sum(y_pred == y_list.detach().numpy()) * 1.0 / y_list.shape[0]]
 
     #compute the line connecting the center of the rectangles
     leaf_gate_center = [(leaf_gate_init[0] + leaf_gate_init[1])/2, (leaf_gate_init[2] + leaf_gate_init[3])/2]
@@ -50,8 +53,10 @@ def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_ro
         leaf_gate = [leaf_gate_init[0] + step[0], leaf_gate_init[1] + step[0], leaf_gate_init[2] + step[1], leaf_gate_init[3] + step[1]]
         plot_gate(gate_ax, leaf_gate, COLORS[s%len(COLORS)], 'Moving Leaf Gate')
         cur_model =  ModelTree(dafi_tree, init_tree=get_tree_1p(DAFI_root_gate, leaf_gate, offset, scale))
-        cur_model = run_train_only_logistic_regression(cur_model, x_list, y_list, log_reg_lr)
+        cur_model = run_train_only_logistic_regression(cur_model, x_list, y_list, log_reg_lr, verbose=False)
         cur_out = cur_model.forward(x_list, y_list)
+        y_pred = (cur_out['y_pred'].detach().numpy() > 0.5) * 1.0
+        accs.append(sum(y_pred == y_list.detach().numpy()) * 1.0 / y_list.shape[0])
         #print(cur_model)
         cur_out = {item:cur_out[item].detach().item() for item in cur_out if item in ['log_loss', 'ref_reg_loss', 'emp_reg_loss', 'corner_reg_loss', 'size_reg_loss']}
  
@@ -67,18 +72,20 @@ def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_ro
     print(distances)
     print(log_losses)
     
-    fig, axes = plt.subplots(5, 1, figsize=figsize)
+    fig, axes = plt.subplots(6, 1, figsize=figsize)
     axes[0].set_title('Distance Between Centers vs log_loss')
     axes[1].set_title('Distance Between Centers vs ref_regs')
     axes[2].set_title('Distance Between Centers vs gate_size_regs')
     axes[3].set_title('Distance Between Centers vs neg_regs')
     axes[4].set_title('Distance Between Centers vs corner_regs')
+    axes[5].set_title('Distance Between Centers vs accuracy')
     
     axes[0].plot(distances, log_losses)
     axes[1].plot(distances, ref_regs)
     axes[2].plot(distances, gate_size_regs)
     axes[3].plot(distances, neg_regs)
     axes[4].plot(distances, corner_regs)
+    axes[5].plot(distances, accs)
     fig.tight_layout() 
     fig.savefig('../../output/cll_4d_1p_loss_moving_gate_between.png')
     gate_fig.savefig('../../output/debug_gate_motion.png')
