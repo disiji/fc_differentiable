@@ -51,7 +51,7 @@ class Cll4d1pInput(CLLInputBase):
 
         self._load_data_(hparams)
         self._get_reference_nested_list_()
-        self._get_init_nested_list_()
+        self._get_init_nested_list_(hparams)
         self._normalize_()
         self._construct_()
         self.split()
@@ -95,8 +95,80 @@ class Cll4d1pInput(CLLInputBase):
                     ]
                 ]
             ]
+    def _get_init_nested_list_(self, hparams):
+        if hparams['init_type'] == 'random': 
+            size_mean = 2000 * 2000
+            size_var = 600 * 600 #about a third of the mean
+            cut_var = 400 #about one tenth of the range
+            min_size = 500 * 500
+            self.init_nested_list = self._get_random_init_nested_list_(size_mean, size_var, cut_var, min_size=3)
+        else:
+            self.init_nested_list = self._get_middle_plots_init_nested_list_()
+    
+    # Afaik we can delete this
+    #def get_random_boundary(self):
+    #    b1 = np.random.randint(5)
+    #    b2 = np.random.randint(b1, 5)
+    #    return np.array([b1, b2])
 
-    def _get_init_nested_list_(self):
+
+    def _get_random_init_nested_list_(self, size_mean, size_var, cut_var, min_size=.1, max_cut=5000):
+        middle_gates = self._get_middle_plots_flattened_list_()
+        random_gate_flat_init = []
+        for gate in middle_gates:
+            size = min_size
+            while size <= min_size:
+                size = np.random.normal(size_mean, size_var)
+            last_cut_to_sample = np.random.randint(0, len(gate))
+            num_iters_in_while = 0
+            cuts_in_order = False
+            while not cuts_in_order:
+                cur_cuts = -1 * np.ones(4)
+                for i in range(len(gate)):
+                    if i == last_cut_to_sample:
+                        continue
+                    while cur_cuts[i] < 0:
+                        cur_cuts[i] = np.random.normal(gate[i], cut_var)
+#                        print(cur_cuts[i], gate[i])
+                cuts_in_order = (cur_cuts[1] > cur_cuts[0]) if (last_cut_to_sample == 3 or last_cut_to_sample == 2) else (cur_cuts[3] > cur_cuts[2])
+                num_iters_in_while += 1
+                if num_iters_in_while > 10:
+                    raise ValueError('The cut variance is way too large, try lowering it.')
+
+            #now do the four cases from scratch work
+            if last_cut_to_sample == 0:#lower boundary
+                cur_cuts[last_cut_to_sample] = cur_cuts[1] - size/(cur_cuts[3] - cur_cuts[2])
+            elif last_cut_to_sample == 1:#upper boundary
+                cur_cuts[last_cut_to_sample] = size/(cur_cuts[3] - cur_cuts[2]) + cur_cuts[0]
+            elif last_cut_to_sample == 2:#lower boundary
+                cur_cuts[last_cut_to_sample] = cur_cuts[3] - size/(cur_cuts[1] - cur_cuts[0]) 
+            elif last_cut_to_sample == 3:#upper boundary
+                cur_cuts[last_cut_to_sample] = cur_cuts[2] + size/(cur_cuts[1]- cur_cuts[0])
+            assert(np.abs((cur_cuts[1] - cur_cuts[0]) * (cur_cuts[3] - cur_cuts[2]) - size) < 1e-3) #make sure it has the size
+            random_gate_flat_init.append(cur_cuts)
+            if cur_cuts[last_cut_to_sample] < 0 or cur_cuts[last_cut_to_sample] > max_cut:
+                print('meow')
+                return self._get_random_init_nested_list_(size_mean, size_var, cut_var, min_size=min_size)
+        print(random_gate_flat_init)
+        return (self._convert_flattened_list_to_nested_(random_gate_flat_init))
+
+    def _get_middle_plots_flattened_list_(self):
+        return [[1019, 3056, 979, 2937], [1024., 3071., 992., 2975.]]    
+
+    def _convert_flattened_list_to_nested_(self, flat_list):
+        converted_list = \
+            [
+                [[u'CD5', flat_list[0][0], flat_list[0][1]], [u'CD19', flat_list[0][2], flat_list[0][3]]],
+                [
+                    [
+                        [[u'CD10', flat_list[1][0], flat_list[1][1]], [u'CD79b', flat_list[1][2], flat_list[1][3]]],
+                        []
+                    ]
+                ]
+            ]
+        return converted_list
+
+    def _get_middle_plots_init_nested_list_(self):
         self.init_nested_list = \
             [
                 [[u'CD5', 1019., 3056.], [u'CD19', 979., 2937.]],
@@ -107,6 +179,7 @@ class Cll4d1pInput(CLLInputBase):
                     ]
                 ]
             ]
+        return self.init_nested_list
 
     def _normalize_(self):
         self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
@@ -151,9 +224,9 @@ class Cll8d1pInput(Cll4d1pInput):
         self.features_full = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
         self.feature2id = dict((self.features[i], i) for i in range(len(self.features)))
 
-        self._load_data_()
+        self._load_data_(hparams)
         self._get_reference_nested_list_()
-        self._get_init_nested_list_()
+        self._get_init_nested_list_(hparams)
         self._normalize_()
         self._construct_()
         self.split()
@@ -161,7 +234,9 @@ class Cll8d1pInput(Cll4d1pInput):
         self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
 
-    def _load_data_(self):
+    def _load_data_(self, hparams):
+        X_DATA_PATH = hparams['data']['features_path']
+        Y_DATA_PATH = hparams['data']['labels_path']
         DATA_DIR = '../data/cll/'
         CYTOMETRY_DIR = DATA_DIR + "PB1_whole_mqian/"
         DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
@@ -169,9 +244,9 @@ class Cll8d1pInput(Cll4d1pInput):
         # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
         # y: a list of labels; 1 is CLL, 0 is healthy
         if self.hparams['load_from_pickle']:
-            with open(DATA_DIR + "filtered_8d_1p_x_list.pkl", 'rb') as f:
+            with open(X_DATA_PATH, 'rb') as f:
                 self.x_list = pickle.load(f)
-            with open(DATA_DIR + 'y_1p_list.pkl', 'rb') as f:
+            with open(Y_DATA_PATH, 'rb') as f:
                 self.y_list = pickle.load(f)
         else:
             x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
@@ -204,7 +279,85 @@ class Cll8d1pInput(Cll4d1pInput):
                 ]
             ]
 
-    def _get_init_nested_list_(self):
+
+    def _get_init_nested_list_(self, hparams):
+        if hparams['init_type'] == 'random':
+            size_mean = 2000 * 2000
+            size_var = 600 * 600 #about a third of the mean
+            cut_var = 400 #about one tenth of the range
+            min_size = 500 * 500
+            self.init_nested_list = self._get_random_init_nested_list_(size_mean, size_var, cut_var, min_size=3)
+        else:
+            self.init_nested_list = self._get_middle_plots_init_nested_list_()
+
+
+
+    def _get_random_init_nested_list_(self, size_mean, size_var, cut_var, min_size=.1, max_cut=5000):
+        middle_gates = self._get_middle_plots_flattened_list_()
+        random_gate_flat_init = []
+        for gate in middle_gates:
+            size = min_size
+            while size <= min_size:
+                size = np.random.normal(size_mean, size_var)
+            last_cut_to_sample = np.random.randint(0, len(gate))
+            num_iters_in_while = 0
+            cuts_in_order = False
+            while not cuts_in_order:
+                cur_cuts = -1 * np.ones(4)
+                for i in range(len(gate)):
+                    if i == last_cut_to_sample:
+                        continue
+                    while cur_cuts[i] < 0:
+                        cur_cuts[i] = np.random.normal(gate[i], cut_var)
+#                        print(cur_cuts[i], gate[i])
+                cuts_in_order = (cur_cuts[1] > cur_cuts[0]) if (last_cut_to_sample == 3 or last_cut_to_sample == 2) else (cur_cuts[3] > cur_cuts[2])
+                num_iters_in_while += 1
+                if num_iters_in_while > 10:
+                    raise ValueError('The cut variance is way too large, try lowering it.')
+
+            #now do the four cases from scratch work
+            if last_cut_to_sample == 0:#lower boundary
+                cur_cuts[last_cut_to_sample] = cur_cuts[1] - size/(cur_cuts[3] - cur_cuts[2])
+            elif last_cut_to_sample == 1:#upper boundary
+                cur_cuts[last_cut_to_sample] = size/(cur_cuts[3] - cur_cuts[2]) + cur_cuts[0]
+            elif last_cut_to_sample == 2:#lower boundary
+                cur_cuts[last_cut_to_sample] = cur_cuts[3] - size/(cur_cuts[1] - cur_cuts[0]) 
+            elif last_cut_to_sample == 3:#upper boundary
+                cur_cuts[last_cut_to_sample] = cur_cuts[2] + size/(cur_cuts[1]- cur_cuts[0])
+            assert(np.abs((cur_cuts[1] - cur_cuts[0]) * (cur_cuts[3] - cur_cuts[2]) - size) < 1e-3) #make sure it has the size
+            random_gate_flat_init.append(cur_cuts)
+            if cur_cuts[last_cut_to_sample] < 0 or cur_cuts[last_cut_to_sample] > max_cut:
+                print('meow')
+                return self._get_random_init_nested_list_(size_mean, size_var, cut_var, min_size=min_size)
+        print(random_gate_flat_init)
+        return (self._convert_flattened_list_to_nested_(random_gate_flat_init))
+
+    def _convert_flattened_list_to_nested_(self, random_gates):
+        nested_list = \
+            [
+                [[u'SSC-H', random_gates[0][0], random_gates[0][1]], [u'CD45', random_gates[0][2], random_gates[0][3]]],
+                [
+                    [
+                        [[u'FSC-A', random_gates[1][0], random_gates[1][1]], [u'SSC-A', random_gates[1][2], random_gates[1][3]]],
+                        [
+                            [
+                                [[u'CD5', random_gates[2][0], random_gates[2][1]], [u'CD19', random_gates[2][2],  random_gates[2][3]]],
+                                [
+                                    [
+                                        [[u'CD10', random_gates[3][0], random_gates[3][1]], [u'CD79b', random_gates[3][2], random_gates[3][3]]],
+                                        []
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        return nested_list
+
+
+    #get initializations in the middle of the plots
+    def _get_middle_plots_init_nested_list_(self):
         self.init_nested_list = \
             [
                 [[u'SSC-H', 1003., 3011.], [u'CD45', 1024., 3071.]],
@@ -225,7 +378,10 @@ class Cll8d1pInput(Cll4d1pInput):
                     ]
                 ]
             ]
+        return self.init_nested_list
 
+    def _get_middle_plots_flattened_list_(self):
+        return [[1003., 3011., 1024., 3071.],[1083., 3091., 1024., 3071.],[1023., 3069., 1024., 3072.],[1024., 3071., 1026, 3078.]]
 
 class Cll4d2pInput(CLLInputBase):
     """
@@ -251,7 +407,7 @@ class Cll4d2pInput(CLLInputBase):
         self._construct_()
         self.split()
 
-        self.x = [[torch.tensor(_[0], dtype=torch.float32), torch.tensor(_[1], dtype=torch.float32)] for _ in
+        self.x = [[torch.tensor(x[0], dtype=torch.float32), torch.tensor(x[1], dtype=torch.float32)] for x in
                   self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
 

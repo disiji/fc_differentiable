@@ -35,12 +35,21 @@ default_hparams = {
     'run_logistic_to_convergence': False,
     'output': {
         'type': 'full'
+    },
+    'annealing': {
+        'anneal_logistic_k': False,
+        'final_k': 1000,
+        'init_k': 1
+    },
+    'two_phase_training': {
+        'turn_on': False,
+        'num_only_log_loss_epochs': 50
     }
 }
 
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
-
+    
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -76,8 +85,12 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                               gate_size_default=hparams['gate_size_default'])
 
         # dafi_tree = run_train_dafi(dafi_tree, hparams, cll_4d_input)
-        model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \
-            run_train_model(model_tree, hparams, cll_4d_input, model_checkpoint=model_checkpoint)
+        if hparams['two_phase_training']['turn_on']: 
+            model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \
+                run_train_model_two_phase(hparams, cll_4d_input, model_checkpoint=model_checkpoint)
+        else:
+            model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \
+                run_train_model(model_tree, hparams, cll_4d_input, model_checkpoint=model_checkpoint)
         if hparams['output']['type'] == 'full':
             output_metric_dict = run_output(
                 model_tree, dafi_tree, hparams, cll_4d_input, train_tracker, eval_tracker, run_time)
@@ -101,7 +114,24 @@ if __name__ == '__main__':
     # run_single_panel(sys.argv[1], int(sys.argv[2]), True)
     hparams = default_hparams
     #yaml_filename = '../configs/cll_4d_1p_reg_grid_srch.yaml'
-    yaml_filename = '../configs/testing_log_to_conv.yaml'
+    #yaml_filename = '../configs/testing_log_to_conv.yaml'
+    #yaml_filename = '../configs/log_to_conv_gridsrch.yaml'
+    #yaml_filename = '../configs/testing_two_phase_training.yaml'
+    #yaml_filename = '../configs/two_phase_grid_search.yaml'
+    yaml_filename = '../configs/single_two_phase.yaml'
+
+
+
+
+
+
+
+
+
+
+
+
+
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
@@ -111,23 +141,48 @@ if __name__ == '__main__':
                 hparams['n_mini_batch_update_gates'] - 1)
     else:
         hparams['n_epoch_dafi'] = hparams['n_epoch']
+    #while True:    
+    #    run_single_panel(hparams, 1, True)
     
+
     run_single_panel(hparams, 1, True)
+
+
+
+
+
+###### Two phase grid search for use with two phase grid search yaml file
+    #grid_gate_size = [0., .25, .5, .75, 1., 1.25, 1.5, 1.75, 2., 10.]
+#    grid_gate_size = [10., 2., 1.75, 1.5, 1.25, 1., .75, .5, .25, 0.]
+#   
+#    for gate_size_reg in grid_gate_size:
+#        print('Gate size reg %.2f' %gate_size_reg)
+#        hparams['gate_size_penalty'] = gate_size_reg
+# 
+#        hparams['experiment_name'] = 'two_phase_logreg_to_conv_grid_search_gate_size=%.2f' %(gate_size_reg)
+#        run_single_panel(hparams, 1, True)
+
+
+    ###Old grid srch code
     #Change this two lines to run in parallel
 
     
 #    grid_neg_box = [0.]
-#    grid_corner_reg = [0.]
+
+#    grid_corner_reg = [0.001, 0.01, 0.05]
 #
 #    
-#    grid_gate_size = [0.]
+#    grid_gate_size = [0.25, 0.5]
 #    #run_single_panel(hparams, 1, True)
-#    for neg_box_reg in grid_neg_box:
+#    while True:
 #        for corner_reg in grid_corner_reg:
 #            for gate_size_reg in grid_gate_size:
-#                hparams['negative_box_penalty'] = neg_box_reg
+#                    
+#                    #for neg_box_reg in grid_neg_box:
+#                        #hparams['negative_box_penalty'] = neg_box_reg
+#                        #hparams['experiment_name'] = 'logreg_to_conv_grid_search_neg_box=%.2f_corner=%.2f_gate_size=%.2f' %(neg_box_reg, corner_reg, gate_size_reg)
 #                hparams['corner_penalty'] = corner_reg
 #                hparams['gate_size_penalty'] = gate_size_reg
-#                hparams['experiment_name'] = 'grid_search_neg_box=%.2f_corner=%.2f_gate_size=%.2f' %(neg_box_reg, corner_reg, gate_size_reg)
+#                hparams['experiment_name'] = 'logreg_to_conv_grid_search_corner=%.3f_gate_size=%.3f_default_gs=.25' %(corner_reg, gate_size_reg)
 #                print(hparams)
 #                run_single_panel(hparams, 1, True)

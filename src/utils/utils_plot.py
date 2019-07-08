@@ -592,3 +592,126 @@ def plot_motion_p2_swap(input, epoch_list, model_checkpoint_dict, filename):
 
     fig.savefig(filename, format='png', bbox_inches='tight')
 
+def get_flattened_gates_CLL_4D(model):
+    keys = [key for key in model.children_dict.keys()]
+    leaf_gate = model.children_dict[keys[1]][0]
+    flat_root = \
+        [
+        F.sigmoid(model.root.gate_low1_param),
+        F.sigmoid(model.root.gate_upp1_param),
+        F.sigmoid(model.root.gate_low2_param),
+        F.sigmoid(model.root.gate_upp2_param)
+        ]
+    flat_leaf = \
+        [
+        F.sigmoid(leaf_gate.gate_low1_param), 
+        F.sigmoid(leaf_gate.gate_upp1_param), 
+        F.sigmoid(leaf_gate.gate_low2_param), 
+        F.sigmoid(leaf_gate.gate_upp2_param) 
+        ] 
+    return [flat_root, flat_leaf]
+
+def plot_box(axes, x1, x2, y1, y2, color, label, dashed=False, lw=3):
+    dash = [3,1]
+    if dashed:
+        axes.plot([x1, x1], [y1, y2], c=color, label=label, dashes=dash, linewidth=lw)
+        axes.plot([x1, x2], [y1, y1], c=color, dashes=dash, linewidth=lw)
+        axes.plot([x2, x2], [y1, y2], c=color, dashes=dash, linewidth=lw)
+        axes.plot([x2, x1], [y2,y2], c=color, dashes=dash, linewidth=lw)
+    else:
+        axes.plot([x1, x1], [y1, y2], c=color, label=label, linewidth=lw)
+        axes.plot([x1, x2], [y1, y1], c=color, linewidth=lw)
+        axes.plot([x2, x2], [y1, y2], c=color, linewidth=lw)
+        axes.plot([x2, x1], [y2,y2], c=color, linewidth=lw)
+    return axes
+
+def plot_gate(axes, gate, color, label, dashed=False, lw=.5):
+    plot_box(axes, gate[0], gate[1], gate[2], gate[3], color, label, dashed=dashed, lw=lw)
+'''
+plot samples on user provided row by column grid
+'''
+def plot_gates_and_samples_2d(plotting_grid, samples, gate, save_path,Dafi_gate=None, cell_sz=.1):
+    fig, axes = plt.subplots(plotting_grid[0], plotting_grid[1], sharex=True, sharey=True, figsize=(plotting_grid[1] * 2, plotting_grid[0] * 2))
+    for row in range(plotting_grid[0]):
+        for col in range(plotting_grid[1]):
+            if row * plotting_grid[1] + col < len(samples):
+                cur_sample = samples[row * plotting_grid[1] + col]
+                plot_gate(axes[row][col],gate , 'r', '', dashed=True)
+                axes[row][col].scatter(cur_sample[:, 0], cur_sample[:, 1], s=cell_sz)
+                if Dafi_gate:
+                    plot_gate(axes[row][col], Dafi_gate, 'k', '')
+    
+    fig.tight_layout()
+    fig.savefig(save_path)
+
+'''
+function to make plots for root +- samples, and leaf +- samples
+'''
+def plot_samples_and_gates_cll_4d_dev(samples, labels , model,Dafi_flattened_gates, cell_sz=.1):
+    pos_samples = [sample for s,sample in enumerate(samples) if labels[s] == 1.]
+    neg_samples = [sample for s,sample in enumerate(samples) if labels[s] == 0.]
+    root_gate, leaf_gate = get_flattened_gates_CLL_4D(model) 
+    plotting_grid_pos = [3, 7]
+    plotting_grid_neg = [2, 7]
+
+    pos_samples_root = [pos_sample[:, [0, 1]] for pos_sample in pos_samples]
+    pos_samples_leaf_4d = [dh.filter_rectangle(pos_sample, 0, 1,
+                    F.sigmoid(model.root.gate_low1_param).detach().item(),
+                    F.sigmoid(model.root.gate_upp1_param).detach().item(),
+                    F.sigmoid(model.root.gate_low2_param).detach().item(),
+                    F.sigmoid(model.root.gate_upp2_param).detach().item()) \
+                    for pos_sample in pos_samples]
+
+    pos_samples_leaf = [pos_sample[:, [2, 3]] for pos_sample in pos_samples_leaf_4d]
+
+    neg_samples_root = [neg_sample[:, [0, 1]] for neg_sample in neg_samples]
+    neg_samples_leaf_4d = [dh.filter_rectangle(neg_sample, 0, 1,
+                    F.sigmoid(model.root.gate_low1_param).detach().item(),
+                    F.sigmoid(model.root.gate_upp1_param).detach().item(),
+                    F.sigmoid(model.root.gate_low2_param).detach().item(),
+                    F.sigmoid(model.root.gate_upp2_param).detach().item())\
+                    for neg_sample in neg_samples]
+
+    neg_samples_leaf = [neg_sample[:, [2, 3]] for neg_sample in neg_samples_leaf_4d]
+
+
+    plot_gates_and_samples_2d(plotting_grid_pos, pos_samples_root, root_gate, '../output/two_phase_g2=10_pos_root.png', Dafi_gate=Dafi_flattened_gates[0])
+    plot_gates_and_samples_2d(plotting_grid_neg, neg_samples_root, root_gate, '../output/two_phase_g2=10_neg_root.png', Dafi_gate=Dafi_flattened_gates[0])
+    plot_gates_and_samples_2d(plotting_grid_pos, pos_samples_leaf, leaf_gate, '../output/two_phase_g2=10_pos_leaf.png', Dafi_gate=Dafi_flattened_gates[1])
+    plot_gates_and_samples_2d(plotting_grid_neg, neg_samples_leaf, leaf_gate, '../output/two_phase_g2=10_neg_leaf.png', Dafi_gate=Dafi_flattened_gates[1])
+
+def get_dafi_gates(offset, scale, feature2id):
+    dafi_nested_list = \
+                    [[[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
+                    [
+                        [
+                            [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
+                            []
+                        ]
+                    ]]
+    dafi_nested_list = dh.normalize_nested_tree(dafi_nested_list, offset, scale, feature2id)
+#    print(dafi_nested_list)
+    dafi_gates = [[0.4022, 0.955, 0.5535, 1.001], [0., 0.3, 0., 0.476]]
+    return dafi_gates
+
+
+ 
+if __name__ == '__main__':
+    with open('../../data/cll/x_dev_4d_1p.pkl', 'rb') as f:
+        x_dev_list = pickle.load(f)
+
+    with open('../../data/cll/y_dev_4d_1p.pkl', 'rb') as f:
+        labels= pickle.load(f)
+
+
+    features = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8']
+    feature2id = dict((features[i], i) for i in range(len(features)))
+    x_dev_list, offset, scale = dh.normalize_x_list(x_dev_list)
+
+    get_dafi_gates(offset, scale, feature2id)
+    with open(model_path, 'rb') as f:
+        model = pickle.load(f)
+
+    DAFI_GATES = get_dafi_gates(offset, scale, feature2id)
+
+    plot_samples_and_gates_cll_4d_dev(x_dev_list, labels, model, DAFI_GATES, cell_sz=cell_sz)

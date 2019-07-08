@@ -7,12 +7,28 @@ import torch
 from utils.bayes_gate import *
 import matplotlib.pyplot as plt
 from train import run_train_only_logistic_regression
+import copy
 
 X_DEV_PATH = '../../data/cll/x_dev_4d_1p.pkl'
 Y_DEV_PATH = '../../data/cll/y_dev_4d_1p.pkl'
 COLORS = ['r', 'b', 'g', 'y', 'm', 'k']
+
+class HingeLoss(torch.nn.Module):
+
+    def __init__(self):
+        super(HingeLoss, self).__init__()
+
+    def forward(self, output, target):
+        target = copy.deepcopy(target)
+        rescaled_output = 2. * output - 1
+        target[target == 0] = -1
+        hinge_loss = 1 - torch.mul(rescaled_output, target)
+        hinge_loss[hinge_loss < 0] = 0
+        hinge_loss = torch.mean(hinge_loss)
+        return hinge_loss
+
 #for plotting with only the use of the CD19/CD5 and CD79b/CD10 gates
-def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_root_gate, num_steps, make_gif=False, x_data_dir=X_DEV_PATH, y_data_dir=Y_DEV_PATH, figsize=(5, 12)):
+def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_root_gate, num_steps, make_gif=False, x_data_dir=X_DEV_PATH, y_data_dir=Y_DEV_PATH, figsize=(5, 12), logistic_k=100):
     x_list, y_list = load_data(x_data_dir, y_data_dir)
     x_list, offset, scale = dh.normalize_x_list(x_list)
     x_list = [torch.tensor(_, dtype=torch.float32) for _ in x_list]
@@ -22,13 +38,20 @@ def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_ro
     #TODO make the entire function take in a params dict for the reg_weights
     log_reg_lr = .03 #3e-4
 
-    model, dafi_tree = setup_model_and_dafi_tree(DAFI_root_gate, DAFI_leaf_gate, leaf_gate_init, offset, scale)
+    mseLoss = torch.nn.MSELoss()
+    hingeLoss = HingeLoss() 
+    model, dafi_tree = setup_model_and_dafi_tree(DAFI_root_gate, DAFI_leaf_gate, leaf_gate_init, offset, scale, logistic_k=logistic_k)
     print('Training model for the first time')
-    model = run_train_only_logistic_regression(model, x_list, y_list, log_reg_lr, verbose=False)
+    model = run_train_only_logistic_regression(model, x_list, y_list, log_reg_lr, verbose=False, conv_thresh=1e-10)
     init_output = model.forward(x_list, y_list)
     y_pred = (init_output['y_pred'].detach().numpy() > 0.5) * 1.0
+    mse = mseLoss(init_output['y_pred'], y_list)
+    hinge_loss = hingeLoss(init_output['y_pred'], y_list)
     init_output = {item:init_output[item].detach().item() for item in init_output if item in ['log_loss', 'ref_reg_loss', 'emp_reg_loss', 'corner_reg_loss', 'size_reg_loss']}
 
+    
+    mses = [mse]
+    hinges = [hinge_loss]
     log_losses = [init_output['log_loss']]
     ref_regs = [init_output['ref_reg_loss']]
     gate_size_regs = [init_output['size_reg_loss']]
@@ -52,12 +75,16 @@ def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_ro
         step = -unit_vector * s *  step_size
         leaf_gate = [leaf_gate_init[0] + step[0], leaf_gate_init[1] + step[0], leaf_gate_init[2] + step[1], leaf_gate_init[3] + step[1]]
         plot_gate(gate_ax, leaf_gate, COLORS[s%len(COLORS)], 'Moving Leaf Gate')
-        cur_model =  ModelTree(dafi_tree, init_tree=get_tree_1p(DAFI_root_gate, leaf_gate, offset, scale))
+        cur_model =  ModelTree(dafi_tree, init_tree=get_tree_1p(DAFI_root_gate, leaf_gate, offset, scale), logistic_k=logistic_k)
         cur_model = run_train_only_logistic_regression(cur_model, x_list, y_list, log_reg_lr, verbose=False)
         cur_out = cur_model.forward(x_list, y_list)
         y_pred = (cur_out['y_pred'].detach().numpy() > 0.5) * 1.0
+        mses.append(mseLoss(cur_out['y_pred'], y_list))
+        hinges.append(hingeLoss(cur_out['y_pred'], y_list))
+        print(hinges)
         accs.append(sum(y_pred == y_list.detach().numpy()) * 1.0 / y_list.shape[0])
         #print(cur_model)
+        full_cur_out = cur_out
         cur_out = {item:cur_out[item].detach().item() for item in cur_out if item in ['log_loss', 'ref_reg_loss', 'emp_reg_loss', 'corner_reg_loss', 'size_reg_loss']}
  
         log_losses.append(cur_out['log_loss'])
@@ -71,21 +98,25 @@ def visualize_loss_as_gates_move_1p_leaf(leaf_gate_init, DAFI_leaf_gate, DAFI_ro
     distances.append(0)
     print(distances)
     print(log_losses)
+    print(accs)
+    print(full_cur_out['leaf_logp'].detach().numpy())
     
-    fig, axes = plt.subplots(6, 1, figsize=figsize)
+    fig, axes = plt.subplots(7, 1, figsize=figsize)
     axes[0].set_title('Distance Between Centers vs log_loss')
-    axes[1].set_title('Distance Between Centers vs ref_regs')
-    axes[2].set_title('Distance Between Centers vs gate_size_regs')
-    axes[3].set_title('Distance Between Centers vs neg_regs')
-    axes[4].set_title('Distance Between Centers vs corner_regs')
-    axes[5].set_title('Distance Between Centers vs accuracy')
+    axes[1].set_title('Distance Between Centers vs MSE')
+    axes[2].set_title('Distance Between Centers vs Hinge Loss')
+    axes[3].set_title('Distance Between Centers vs ref_regs')
+    axes[4].set_title('Distance Between Centers vs neg_regs')
+    axes[5].set_title('Distance Between Centers vs corner_regs')
+    axes[6].set_title('Distance Between Centers vs accuracy')
     
     axes[0].plot(distances, log_losses)
-    axes[1].plot(distances, ref_regs)
-    axes[2].plot(distances, gate_size_regs)
-    axes[3].plot(distances, neg_regs)
-    axes[4].plot(distances, corner_regs)
-    axes[5].plot(distances, accs)
+    axes[1].plot(distances, mses)
+    axes[2].plot(distances, hinges)
+    axes[3].plot(distances, ref_regs)
+    axes[4].plot(distances, neg_regs)
+    axes[5].plot(distances, corner_regs)
+    axes[6].plot(distances, accs)
     fig.tight_layout() 
     fig.savefig('../../output/cll_4d_1p_loss_moving_gate_between.png')
     gate_fig.savefig('../../output/debug_gate_motion.png')
@@ -103,11 +134,11 @@ def load_data(x_data_dir, y_data_dir):
     #y_list = torch.tensor(y_list, dtype=torch.float32)
     return x_list, y_list
 
-def setup_model_and_dafi_tree(DAFI_root_gate, DAFI_leaf_gate, leaf_gate_init, offset, scale): 
+def setup_model_and_dafi_tree(DAFI_root_gate, DAFI_leaf_gate, leaf_gate_init, offset, scale, logistic_k=1): 
     init_tree = get_tree_1p(DAFI_root_gate, leaf_gate_init, offset, scale)
     dafi_tree = get_tree_1p(DAFI_root_gate, DAFI_leaf_gate, offset, scale)
     
-    model = ModelTree(dafi_tree, init_tree=init_tree)
+    model = ModelTree(dafi_tree, init_tree=init_tree, logistic_k=logistic_k)
     return model, dafi_tree
 
 def get_tree_1p(root_gate, leaf_gate, offset, scale):
@@ -154,5 +185,5 @@ if __name__ == '__main__':
 
     center_leaf = [1019., 3056., 979., 2937.]
     similar_size_dafi_leaf = [1400., 2600., 1100, 2900]
-    num_steps = 50
-    visualize_loss_as_gates_move_1p_leaf(similar_size_dafi_leaf, [0., 1228., 0., 1843.], [1638., 3891., 2150., 3891.], num_steps)
+    num_steps = 10
+    visualize_loss_as_gates_move_1p_leaf(similar_size_dafi_leaf, [0., 1228., 0., 1843.], [1638., 3891., 2150., 3891.], num_steps,logistic_k=100)

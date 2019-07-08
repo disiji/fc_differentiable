@@ -123,7 +123,11 @@ class ModelNode(nn.Module):
                           + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
         size_reg_penalty = (abs(gate_upp1 - gate_low1) - self.gate_size_default[0]) ** 2 + \
                            (abs(gate_upp2 - gate_low2) - self.gate_size_default[1]) ** 2
-        corner_reg_penalty = torch.sqrt(torch.min(torch.tensor([gate_low1 ** 2 + gate_low2 ** 2,
+        
+#        torch.cat([gate_low1 ** 2 + gate_low2 ** 2, gate_low1 ** 2 + (1 - gate_upp2) ** 2, \
+#            (1 - gate_upp1) ** 2 + gate_low2 ** 2, \
+#            (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2])
+        corner_reg_penalty = torch.sqrt(torch.min(torch.cat([gate_low1 ** 2 + gate_low2 ** 2,
                                                                  gate_low1 ** 2 + (1 - gate_upp2) ** 2,
                                                                  (1 - gate_upp1) ** 2 + gate_low2 ** 2,
                                                                  (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2])))
@@ -133,12 +137,12 @@ class ModelNode(nn.Module):
 class ModelTree(nn.Module):
 
     def __init__(self, reference_tree,
-                 logistic_k=10,
+                 logistic_k=100,
                  regularisation_penalty=10.,
                  positive_box_penalty=10.,
                  negative_box_penalty=10.,
-                 corner_penalty=1.,
-                 gate_size_penalty=10,
+                 corner_penalty=10.,
+                 gate_size_penalty=10.,
                  init_tree=None,
                  loss_type='logistic',
                  gate_size_default=(1. / 2, 1. / 2),
