@@ -124,7 +124,14 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint):
 
     if hparams['annealing']['anneal_logistic_k']:
         model.logistic_k = hparams['annealing']['init_k']
-    
+
+    if torch.cuda.is_available():
+        model.cuda()
+        train_tracker.cuda()
+        eval_tracker.cuda()
+        optimizer_classifier.cuda()
+        optimizer_gates.cuda()
+        model_checkpoint_dict.cuda()
     return model, train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict
 
 def run_train_model_two_phase(hparams, input, model_checkpoint=False):

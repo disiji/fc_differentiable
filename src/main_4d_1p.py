@@ -49,6 +49,7 @@ default_hparams = {
 
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
+        
     
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
@@ -83,6 +84,12 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                               init_tree=None,
                               loss_type=hparams['loss_type'],
                               gate_size_default=hparams['gate_size_default'])
+        torch.cuda.set_device(0)
+        if torch.cuda.is_available():
+            model_tree.cuda()
+            dafi_tree.cuda()
+            hparams.cuda()
+            cll_4d_input.cuda()
 
         # dafi_tree = run_train_dafi(dafi_tree, hparams, cll_4d_input)
         if hparams['two_phase_training']['turn_on']: 
