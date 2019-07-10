@@ -127,15 +127,14 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint):
 
     if torch.cuda.is_available():
         model.cuda()
-        train_tracker.cuda()
-        eval_tracker.cuda()
-        optimizer_classifier.cuda()
-        optimizer_gates.cuda()
-        model_checkpoint_dict.cuda()
+        #train_tracker.cuda()
+        #eval_tracker.cuda()
+        #optimizer_classifier.cuda()
+        #optimizer_gates.cuda()
+        #model_checkpoint_dict.cuda()
     return model, train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict
 
 def run_train_model_two_phase(hparams, input, model_checkpoint=False):
-    
     best_model_so_far = None
     best_log_loss_so_far = 1e10 #just a large number
     for random_init in range(hparams['two_phase_training']['num_random_inits_for_log_loss_only']):

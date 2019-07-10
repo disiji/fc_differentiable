@@ -88,8 +88,23 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
         if torch.cuda.is_available():
             model_tree.cuda()
             dafi_tree.cuda()
-            hparams.cuda()
-            cll_4d_input.cuda()
+            on_cuda_list_x_train = []
+            #on_cuda_list_y_train = []
+            on_cuda_list_x_eval = []
+            #on_cuda_list_y_eval = []
+            for i in range(len(cll_4d_input.x_train)):
+                on_cuda_list_x_train.append(cll_4d_input.x_train[i].cuda())
+                #on_cuda_list_y_train.append(cll_4d_input.y_train[i].cuda())
+                if not (cll_4d_input.x_eval is None):
+                    on_cuda_list_x_eval.append(cll_4d_input.x_eval[i].cuda())
+                    #on_cuda_list_y_eval.append(cll_4d_input.y_eval[i].cuda())
+            cll_4d_input.x_train = on_cuda_list_x_train
+            #cll_4d_input.y_train = torch.tensor(on_cuda_list_y_train)
+            if not (cll_4d_input.x_eval is None):
+                cll_4d_input.x_eval = on_cuda_list_x_eval
+                #cll_4d_input.y_eval = on_cuda_list_y_eval
+                cll_4d_input.y_eval.cuda()
+            cll_4d_input.y_train = cll_4d_input.y_train.cuda()
 
         # dafi_tree = run_train_dafi(dafi_tree, hparams, cll_4d_input)
         if hparams['two_phase_training']['turn_on']: 

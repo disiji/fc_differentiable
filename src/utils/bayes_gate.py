@@ -112,7 +112,7 @@ class ModelNode(nn.Module):
         gate_low2 = F.sigmoid(self.gate_low2_param)
         gate_upp1 = F.sigmoid(self.gate_upp1_param)
         gate_upp2 = F.sigmoid(self.gate_upp2_param)
-
+       
         logp = F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim1] - gate_low1))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
                + F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim2] - gate_low2))) \
@@ -181,6 +181,10 @@ class ModelTree(nn.Module):
         :return:
         """
         node = ModelNode(self.logistic_k, reference_tree, init_tree, self.gate_size_default)
+
+        if torch.cuda.is_available():
+            node.cuda()
+
         child_list = nn.ModuleList()
         if init_tree == None:
             for child in reference_tree.children:
@@ -218,11 +222,15 @@ class ModelTree(nn.Module):
                   }
 
         tensor = torch.tensor((), dtype=torch.float32)
-        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features))
+        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features)).cuda()
+        if torch.cuda.is_available():
+            leaf_probs.cuda()
 
         for sample_idx in range(len(x)):
 
             this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)))]
+            if torch.cuda.is_available():
+                this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)).cuda())]
             leaf_idx = 0
             while this_level:
                 next_level = list()
