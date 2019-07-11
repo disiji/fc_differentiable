@@ -49,8 +49,8 @@ default_hparams = {
 
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
-        
-    
+    torch.cuda.set_device(0)
+
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -84,27 +84,9 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                               init_tree=None,
                               loss_type=hparams['loss_type'],
                               gate_size_default=hparams['gate_size_default'])
-        torch.cuda.set_device(0)
         if torch.cuda.is_available():
             model_tree.cuda()
             dafi_tree.cuda()
-            on_cuda_list_x_train = []
-            #on_cuda_list_y_train = []
-            on_cuda_list_x_eval = []
-            #on_cuda_list_y_eval = []
-            for i in range(len(cll_4d_input.x_train)):
-                on_cuda_list_x_train.append(cll_4d_input.x_train[i].cuda())
-                #on_cuda_list_y_train.append(cll_4d_input.y_train[i].cuda())
-                if not (cll_4d_input.x_eval is None):
-                    on_cuda_list_x_eval.append(cll_4d_input.x_eval[i].cuda())
-                    #on_cuda_list_y_eval.append(cll_4d_input.y_eval[i].cuda())
-            cll_4d_input.x_train = on_cuda_list_x_train
-            #cll_4d_input.y_train = torch.tensor(on_cuda_list_y_train)
-            if not (cll_4d_input.x_eval is None):
-                cll_4d_input.x_eval = on_cuda_list_x_eval
-                #cll_4d_input.y_eval = on_cuda_list_y_eval
-                cll_4d_input.y_eval.cuda()
-            cll_4d_input.y_train = cll_4d_input.y_train.cuda()
 
         # dafi_tree = run_train_dafi(dafi_tree, hparams, cll_4d_input)
         if hparams['two_phase_training']['turn_on']: 
@@ -140,7 +122,7 @@ if __name__ == '__main__':
     #yaml_filename = '../configs/log_to_conv_gridsrch.yaml'
     #yaml_filename = '../configs/testing_two_phase_training.yaml'
     #yaml_filename = '../configs/two_phase_grid_search.yaml'
-    yaml_filename = '../configs/single_two_phase.yaml'
+    yaml_filename = '../configs/single_two_phase_profiling.yaml'
 
 
 

@@ -29,7 +29,7 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
     if ax == None:
         fig, ax = plt.subplots(1)
     # Add scatter plot
-    ax.scatter(x1, x2, s=1)
+    ax.scatter(x1.cpu(), x2.cpu(), s=1)
     n_gates = len(gates)
     colors = ["black", "red", "red", "blue", "purple"]
     linestyles = ['solid', 'dashed', 'solid', 'solid', 'solid']

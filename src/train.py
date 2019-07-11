@@ -569,16 +569,16 @@ def no_overlap(flat_gate_model, flat_gate_dafi):
 #            dafi_tree_node = dafi_tree[0]
 #            get_dafi_overlap(model_node, dafi_tree_node)
 def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, train_tracker, eval_tracker, run_time):
-    y_score = model(input.x, input.y)['y_pred'].detach().numpy()
+    y_score = model(input.x_train, input.y_train)['y_pred'].cpu().detach().numpy()
     y_pred = (y_score > 0.5) * 1.0
-    overall_accuracy = sum(y_pred == input.y.numpy()) * 1.0 / len(input.x)
+    overall_accuracy = sum(y_pred == input.y.cpu().numpy()) * 1.0 / len(input.x)
     if not type(input) == Cll8d1pInput:
         dafi_ratio_inter_union = get_dafi_intersection_over_union_p1_avg(model, dafi_tree)
-    log_loss = model(input.x, input.y)['log_loss'].detach().numpy() 
+    log_loss = model(input.x_train, input.y_train)['log_loss'].cpu().detach().numpy() 
 
     with open('../output/%s/model_classifier_weights.csv' % hparams['experiment_name'], "a+") as file:
         bias = str(model.linear.bias.detach().item())
-        weights = ', '.join(map(str, model.linear.weight.data[0].numpy()))
+        weights = ', '.join(map(str, model.linear.weight.data[0].cpu().numpy()))
         file.write('%d, %s, %s\n' % (hparams['random_state'], bias, weights))
 
     if not type(input) == Cll8d1pInput:
@@ -829,14 +829,14 @@ def run_write_prediction(model_tree, dafi_tree, input, hparams):
 
     with open("../output/%s/features_model.csv" % hparams['experiment_name'], "a+") as file:
         file.write("%d\n" % hparams['random_state'])
-        np.savetxt(file, model_tree(input.x, input.y)['leaf_logp'].detach().numpy(), delimiter=',')
+        np.savetxt(file, model_tree(input.x, input.y)['leaf_logp'].cpu().detach().numpy(), delimiter=',')
         file.write('\n')
     with open("../output/%s/features_dafi.csv" % hparams['experiment_name'], "a+") as file:
         file.write("%d\n" % hparams['random_state'])
-        np.savetxt(file, dafi_tree(input.x, input.y)['leaf_logp'].detach().numpy(), delimiter=',')
+        np.savetxt(file, dafi_tree(input.x, input.y)['leaf_logp'].cpu().detach().numpy(), delimiter=',')
         file.write('\n')
 
-    feats = model_tree(input.x, input.y)['leaf_logp'].detach().numpy()
+    feats = model_tree(input.x, input.y)['leaf_logp'].cpu().detach().numpy()
     plt.clf()
     plt.scatter(np.arange(feats.shape[0]), feats)
     plt.title('features for each sample')

@@ -58,6 +58,11 @@ class Cll4d1pInput(CLLInputBase):
 
         self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
+        on_cuda_list_x_all = []
+        for i in range(len(self.x)):
+            on_cuda_list_x_all.append(self.x[i].cuda())
+        self.x = on_cuda_list_x_all
+        self.y = self.y.cuda()
 
     def _load_data_(self, hparams):
         #DATA_DIR = '../data/cll/'
@@ -212,6 +217,18 @@ class Cll4d1pInput(CLLInputBase):
             self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
             self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
 
+        if torch.cuda.is_available():
+            on_cuda_list_x_train = []
+            on_cuda_list_x_eval = []
+            for i in range(len(self.x_train)):
+                on_cuda_list_x_train.append(self.x_train[i].cuda())
+                if not (self.x_eval is None):
+                    on_cuda_list_x_eval.append(self.x_eval[i].cuda())
+            self.x_train = on_cuda_list_x_train
+            if not (self.x_eval is None):
+                self.x_eval = on_cuda_list_x_eval
+                self.y_eval.cuda()
+            self.y_train = self.y_train.cuda()
 
 class Cll8d1pInput(Cll4d1pInput):
     """
