@@ -27,11 +27,11 @@ class Tracker():
 
     def update(self, model, output, y_true, epoch, i, update_type='lightweight'):
         y_pred = (output['y_pred'].cpu().detach().numpy() > 0.5) * 1.0
-        self.loss.append(output['loss'])
-        self.log_loss.append(output['log_loss'])
-        self.ref_reg_loss.append(output['ref_reg_loss'])
-        self.size_reg_loss.append(output['size_reg_loss'])
-        self.corner_reg_loss.append(output['corner_reg_loss'])
+        self.loss.append(output['loss'].cpu().detach())
+        self.log_loss.append(output['log_loss'].cpu().detach())
+        self.ref_reg_loss.append(output['ref_reg_loss'].cpu().detach())
+        self.size_reg_loss.append(output['size_reg_loss'].cpu().detach())
+        self.corner_reg_loss.append(output['corner_reg_loss'].cpu().detach())
         self.acc.append(sum(y_pred == y_true.cpu().numpy()) * 1.0 / y_true.shape[0])
         if not(update_type== 'lightweight'):
             

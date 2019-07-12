@@ -299,6 +299,7 @@ def plot_cll_1p_light(normalized_x, filtered_normalized_x, y, FEATURES, model_tr
     fig_leaf_neg.savefig(figname_leaf_neg)
 
 
+
 def plot_motion_p1(input, epoch_list, model_checkpoint_dict, filename):
     # data to plot on
     input_x_pos = torch.cat([input.x[idx] for idx in range(len(input.y)) if input.y[idx] == 1], dim=0)
@@ -693,6 +694,28 @@ def get_dafi_gates(offset, scale, feature2id):
 #    print(dafi_nested_list)
     dafi_gates = [[0.4022, 0.955, 0.5535, 1.001], [0., 0.3, 0., 0.476]]
     return dafi_gates
+
+
+# Refactored version of gate motion code
+def plot_gate_motion(models_per_iteration, model_dafi, data, hparams):
+    plot_params = DEFAULT_PLOT_PARAMS.update(plot_params)
+    num_gates = len(model_dafi.children_dict)
+    num_iterations = len(models_per_iteration)
+    fig, axes = plt.subplots(num_gates, len(num_iterations),        figsize=hparams['plot_params']['figsize'])
+    for iteration, model in enumerate(models_per_iteration):
+        plot_data_and_gates(axes[:, iteration], model, data)
+        plot_data_and_gates(axes[:, iteration], model_dafi, data)
+
+    fig.savefig('../output/%s/gate_motion.png' %hparams['experiment_name'])
+
+
+
+
+# Refactored version of plotting code
+def plot_data_and_gates(axes, model, data):
+    modelPlotter = DataAndGatesPlotter(model, data)
+    modelPlotter.plot_on_axes(axes) 
+
 
 
  

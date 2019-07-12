@@ -109,7 +109,13 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
         # run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
         # run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
         run_write_prediction(model_tree, dafi_tree, cll_4d_input, hparams)
-        run_gate_motion_1p(hparams, cll_4d_input, model_checkpoint_dict)
+        #run_gate_motion_1p(hparams, cll_4d_input, model_checkpoint_dict)
+
+        models_per_iteration = [model_checkpoint_dict[iteration] 
+                for iteration in 
+                hparams['seven_epochs_for_gate_motion_plot']
+        ]
+        plot_gate_motion(models_per_iteration, dafi_tree,input.x_train.cpu().detach().numpy(), plot_params=hparams['plot_params'])
         # model_checkpoint = False
 
 

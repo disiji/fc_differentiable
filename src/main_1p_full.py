@@ -49,7 +49,7 @@ default_hparams = {
 }
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
-
+    torch.cuda.set_device(0)
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -85,6 +85,10 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                               gate_size_default=hparams['gate_size_default'])
 
         # dafi_tree = run_train_dafi(dafi_tree, hparams, cll_1p_full_input)
+
+        if torch.cuda.is_available():
+            model_tree.cuda()
+            dafi_tree.cuda()
 
         if hparams['two_phase_training']['turn_on']: 
             model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \

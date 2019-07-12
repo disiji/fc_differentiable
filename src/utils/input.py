@@ -59,10 +59,11 @@ class Cll4d1pInput(CLLInputBase):
         self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
         on_cuda_list_x_all = []
-        for i in range(len(self.x)):
-            on_cuda_list_x_all.append(self.x[i].cuda())
-        self.x = on_cuda_list_x_all
-        self.y = self.y.cuda()
+        if torch.cuda.is_available():
+            for i in range(len(self.x)):
+                on_cuda_list_x_all.append(self.x[i].cuda())
+            self.x = on_cuda_list_x_all
+            self.y = self.y.cuda()
 
     def _load_data_(self, hparams):
         #DATA_DIR = '../data/cll/'
@@ -250,6 +251,13 @@ class Cll8d1pInput(Cll4d1pInput):
 
         self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
+
+        on_cuda_list_x_all = []
+        if torch.cuda.is_available():
+            for i in range(len(self.x)):
+                on_cuda_list_x_all.append(self.x[i].cuda())
+            self.x = on_cuda_list_x_all
+            self.y = self.y.cuda()
 
     def _load_data_(self, hparams):
         X_DATA_PATH = hparams['data']['features_path']

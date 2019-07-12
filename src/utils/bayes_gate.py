@@ -31,6 +31,8 @@ class ReferenceTree(object):
     def __init__(self, nested_list, features2id):
         if len(nested_list) != 2:
             raise ValueError("Input 'nested_list' is not properly defined.")
+        self.features2id = features2id
+        self.ids2features = dict((idx, feature) for feature, idx in self.features2id.items())
         self.gate = Gate(nested_list[0], features2id)
         self.n_children = len(nested_list[1])
         self.children = [None] * self.n_children
@@ -112,6 +114,7 @@ class ModelNode(nn.Module):
         gate_low2 = F.sigmoid(self.gate_low2_param)
         gate_upp1 = F.sigmoid(self.gate_upp1_param)
         gate_upp2 = F.sigmoid(self.gate_upp2_param)
+
        
         logp = F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim1] - gate_low1))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
@@ -275,7 +278,6 @@ class ModelTree(nn.Module):
                                              output['leaf_probs'][sample_idx][0] / sum(y)
 
         output['loss'] = loss + output['emp_reg_loss']
-
         return output
 
 

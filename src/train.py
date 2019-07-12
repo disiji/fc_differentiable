@@ -1,3 +1,4 @@
+import sys
 import time
 from copy import deepcopy
 from random import shuffle
@@ -134,13 +135,22 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint):
         #model_checkpoint_dict.cuda()
     return model, train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict
 
+
+def free_memory(variables_to_free):
+    for var in variables_to_free:
+        del var
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
 def run_train_model_two_phase(hparams, input, model_checkpoint=False):
     best_model_so_far = None
     best_log_loss_so_far = 1e10 #just a large number
     for random_init in range(hparams['two_phase_training']['num_random_inits_for_log_loss_only']):
         start = time.time()
         if random_init > 0:
-            #input._get_init_nested_list_(hparams)
+            # have to free memory to avoid overflowing gpu with uneeded copies of the data and trackers
+            #free_memory([model, train_tracker, eval_tracker, optimizer_classifier, 
+            #    optimizer_gates, model_checkpoint_dict, input, output, output_detached])
             if type(input) == Cll8d1pInput:
                 input = Cll8d1pInput(hparams)
             elif type(input) == Cll4d1pInput:
@@ -156,7 +166,6 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False):
             shuffle(idx_shuffle)
             x_train = [input.x_train[_] for _ in idx_shuffle]
             y_train = input.y_train[idx_shuffle]
-        
             
             if hparams['annealing']['anneal_logistic_k']:
                 #reach the final k by the last epoch starting at init_k
@@ -247,10 +256,11 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False):
     # Now train using the regularization terms as well as the log loss
     
     start = time.time()
-
+    
     #only train the second part with the best model from before
     model = best_model_so_far
     for epoch in range(hparams['n_epoch'] - hparams['two_phase_training']['num_only_log_loss_epochs']):
+        #free_memory([output, output_detached, x_train, y_train, x_batch, y_batch])
         # shuffle training data
         idx_shuffle = np.array([i for i in range(len(input.x_train))])
         shuffle(idx_shuffle)
