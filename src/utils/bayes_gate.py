@@ -1,10 +1,12 @@
 from __future__ import division
 
 from math import *
+import pdb
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from copy import deepcopy
 
 #used only for referenceTree object, cuts here don't have to be passed through sigmoid activations
 class Gate(object):
@@ -46,7 +48,7 @@ class ReferenceTree(object):
 
 #cuts here have to passed through sigmoid activation to get boundaries in (0, 1)
 class ModelNode(nn.Module):
-    def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=1. / 4):
+    def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=1. / 4, is_root=False):
         """
         :param logistic_k:
         :param reference_tree:
@@ -58,6 +60,7 @@ class ModelNode(nn.Module):
         self.gate_dim1 = self.reference_tree.gate.gate_dim1
         self.gate_dim2 = self.reference_tree.gate.gate_dim2
         self.gate_size_default = gate_size_default
+        self.is_root = is_root
         if init_tree == None:
             self.gate_low1_param = nn.Parameter(
                 torch.tensor(self.__log_odds_ratio__(self.reference_tree.gate.gate_low1), dtype=torch.float32))
@@ -166,6 +169,7 @@ class ModelTree(nn.Module):
         self.classifier = classifier
         self.children_dict = nn.ModuleDict()
         self.root = self.add(reference_tree, init_tree)
+        self.root.is_root = True
         self.n_sample_features = reference_tree.n_leafs
         # define parameters in the logistic regression model
         if self.classifier:
@@ -176,6 +180,61 @@ class ModelTree(nn.Module):
                 self.criterion = nn.BCEWithLogitsLoss()
             elif self.loss_type == "MSE":
                 self.criterion = nn.MSELoss()
+
+    def __deepcopy__(self, memo):
+        deepcopy_method = self.__deepcopy__
+        self.__deepcopy__ = None
+        cp = deepcopy(self, memo)
+        self.__deepcopy__ = deepcopy_method
+
+        root_copy = deepcopy(self.root)
+        cp.root = root_copy
+        cp.children_dict  = self._deepcopy_children_dict(root_copy)
+   #     print('Copy:')
+   #     print(cp.children_dict)
+   #     print('copy root %s, model root %s' %(str(id(cp.root)), str(id(self.root))))
+   #     print('Model:')
+   #     print(self.children_dict)
+        return cp
+
+    def _deepcopy_children_dict(self, root_copy):
+        dict_copy = nn.ModuleDict()
+        node_stack = [self.root]
+        node_copy_stack = [root_copy]
+        
+        while len(node_stack) > 0:
+            node = node_stack.pop()
+            node_copy = node_copy_stack.pop()
+
+            children_list_copy = nn.ModuleList()
+            children_list = self.children_dict[str(id(node))]
+
+            # Handle case that node is a leaf
+            #if len(children_list) == 0:
+            #    dict_copy[str(id(node_copy))] = children_list_copy
+            #    continue
+
+            for child in children_list:
+                child_copy = deepcopy(child)
+                children_list_copy.append(child_copy)
+
+                node_stack.append(child)
+                node_copy_stack.append(child_copy)
+            #node_copy = deepcopy(node)
+
+            dict_copy[str(id(node_copy))] = children_list_copy
+            #if node == self.root:
+            #    dict_copy[str(id(root_copy))] = children_list_copy
+            #else:
+            #    dict_copy[str(id(node_copy))] = children_list_copy
+
+            #print(dict_copy)
+            #print(self.children_dict)
+#            print('next '+ str(id(node_copy_stack[0])) if len(node_copy_stack) > 0 else 'meow')
+#            print('cur: ' + str(id(node_copy)))
+#            pdb.set_trace()
+#        print('done copying')
+        return dict_copy 
 
     def add(self, reference_tree, init_tree=None):
         """

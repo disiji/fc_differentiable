@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch
 from math import *
 import utils.utils_load_data as dh
-
+from utils.DataAndGatesPlotter import DataAndGatesPlotter
 
 def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, normalized=True):
     """
@@ -698,23 +698,28 @@ def get_dafi_gates(offset, scale, feature2id):
 
 # Refactored version of gate motion code
 def plot_gate_motion(models_per_iteration, model_dafi, data, hparams):
-    plot_params = DEFAULT_PLOT_PARAMS.update(plot_params)
+#    plot_params = DEFAULT_PLOT_PARAMS.update(plot_params)
     num_gates = len(model_dafi.children_dict)
     num_iterations = len(models_per_iteration)
-    fig, axes = plt.subplots(num_gates, len(num_iterations),        figsize=hparams['plot_params']['figsize'])
+    fig, axes = plt.subplots(num_gates, num_iterations,
+                    figsize=hparams['plot_params']['figsize'])
     for iteration, model in enumerate(models_per_iteration):
-        plot_data_and_gates(axes[:, iteration], model, data)
-        plot_data_and_gates(axes[:, iteration], model_dafi, data)
+        plot_data_and_gates(axes[:, iteration], model, data, hparams)
+        plot_just_DAFI_gates(axes[:, iteration], model_dafi, data, hparams)
+        #plot_data_and_gates(axes[:, iteration], model_dafi, data, hparams)
+
 
     fig.savefig('../output/%s/gate_motion.png' %hparams['experiment_name'])
 
 
-
+def plot_just_DAFI_gates(axes, model, data, hparams):
+    modelPlotter = DataAndGatesPlotter(model, data)
+    modelPlotter.plot_only_DAFI_gates_on_axes(axes, hparams)
 
 # Refactored version of plotting code
-def plot_data_and_gates(axes, model, data):
+def plot_data_and_gates(axes, model, data, hparams):
     modelPlotter = DataAndGatesPlotter(model, data)
-    modelPlotter.plot_on_axes(axes) 
+    modelPlotter.plot_on_axes(axes, hparams) 
 
 
 

@@ -285,7 +285,7 @@ class Cll8d1pInput(Cll4d1pInput):
     def _get_reference_nested_list_(self):
         self.reference_nested_list = \
             [
-                [[u'SSC-H', 102., 921.], [u'CD45', 2048., 2560.]],
+                [[u'SSC-H', 102., 921.], [u'CD45', 2048., 3891]],
                 [
                     [
                         [[u'FSC-A', 921., 2150.], [u'SSC-A', 102., 921.]],

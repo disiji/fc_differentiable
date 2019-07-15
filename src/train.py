@@ -771,6 +771,8 @@ def run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, 
                           filename_root_pas, filename_root_neg, filename_leaf_pas, filename_leaf_neg)
 
 
+
+
 def run_gate_motion_step(hparams, input, model_checkpoint_dict, train_tracker, n_samples_plot=20):
     # select 10 samples for plotting
     idx_pos = [i for i in range(len(input.y)) if input.y[i] == 1][:(n_samples_plot // 2)]
@@ -797,6 +799,8 @@ def run_gate_motion_step(hparams, input, model_checkpoint_dict, train_tracker, n
                                     input.reference_tree,
                                     train_tracker, filename_root_pas, filename_root_neg, filename_leaf_pas,
                                     filename_leaf_neg)
+
+
 
 def run_gate_motion_1p(hparams, input, model_checkpoint_dict):
 

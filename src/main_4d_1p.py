@@ -3,6 +3,7 @@ import os
 
 import yaml
 
+from utils.utils_plot import plot_gate_motion
 from train import *
 from utils.bayes_gate import ModelTree
 from utils.input import *
@@ -44,6 +45,10 @@ default_hparams = {
     'two_phase_training': {
         'turn_on': False,
         'num_only_log_loss_epochs': 50
+    },
+    'plot_params': {
+        'figsize': [10, 10],
+        'marker_size': .01,
     }
 }
 
@@ -115,7 +120,15 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                 for iteration in 
                 hparams['seven_epochs_for_gate_motion_plot']
         ]
-        plot_gate_motion(models_per_iteration, dafi_tree,input.x_train.cpu().detach().numpy(), plot_params=hparams['plot_params'])
+
+        detached_data_x_tr = [x.cpu().detach().numpy() for x in cll_4d_input.x_train]
+
+        plot_gate_motion(
+                models_per_iteration, 
+                dafi_tree,
+                detached_data_x_tr[0],
+                hparams
+        )
         # model_checkpoint = False
 
 
@@ -128,7 +141,7 @@ if __name__ == '__main__':
     #yaml_filename = '../configs/log_to_conv_gridsrch.yaml'
     #yaml_filename = '../configs/testing_two_phase_training.yaml'
     #yaml_filename = '../configs/two_phase_grid_search.yaml'
-    yaml_filename = '../configs/single_two_phase_profiling.yaml'
+    yaml_filename = '../configs/single_two_phase_plot_testing.yaml'
 
 
 

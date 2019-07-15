@@ -6,7 +6,7 @@ import yaml
 from train import *
 from utils.bayes_gate import ModelTree
 from utils.input import *
-
+from utils.utils_plot import plot_gate_motion
 
 default_hparams = {
     'logistic_k': 100,
@@ -45,7 +45,11 @@ default_hparams = {
     'two_phase_training': {
         'turn_on': False,
         'num_only_log_loss_epochs': 50
-    }
+    },
+    'plot_params':{
+        'figsize': [10, 10],
+        'marker_size': .01,
+    },
 }
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
@@ -111,12 +115,25 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
         # run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_1p_full_input, output_metric_dict)
         # run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_1p_full_input)
         run_write_prediction(model_tree, dafi_tree, cll_1p_full_input, hparams)
-        run_gate_motion_1p(hparams, cll_1p_full_input, model_checkpoint_dict)
+        #run_gate_motion_1p(hparams, cll_1p_full_input, model_checkpoint_dict)
+
+        models_per_iteration = [model_checkpoint_dict[iteration] 
+                for iteration in 
+                hparams['seven_epochs_for_gate_motion_plot']
+        ]
+        detached_data_x_tr = [x.cpu().detach().numpy() for x in cll_1p_full_input.x_train]
+        plot_gate_motion(
+                models_per_iteration, 
+                dafi_tree,
+                detached_data_x_tr[0],
+                hparams
+        )
         # model_checkpoint = False
 
 
 if __name__ == '__main__':
-    yaml_filename = '../configs/testing_full_1p.yaml'
+    #yaml_filename = '../configs/testing_full_1p.yaml'
+    yaml_filename = '../configs/testing_full_panel_plots.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
