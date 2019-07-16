@@ -578,7 +578,7 @@ def no_overlap(flat_gate_model, flat_gate_dafi):
 #        for model_node, dafi_tree_node in zip(this_level_model, :
 #            dafi_tree_node = dafi_tree[0]
 #            get_dafi_overlap(model_node, dafi_tree_node)
-def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, train_tracker, eval_tracker, run_time):
+def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, train_tracker, eval_tracker, run_time, model_checkpoint_dict):
     y_score = model(input.x_train, input.y_train)['y_pred'].cpu().detach().numpy()
     y_pred = (y_score > 0.5) * 1.0
     overall_accuracy = sum(y_pred == input.y.cpu().numpy()) * 1.0 / len(input.x)
@@ -622,6 +622,10 @@ def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, tr
             }
     with open('../output/%s/model.pkl' %(hparams['experiment_name']), 'wb') as f:
         pickle.dump(model, f)
+
+    with open('../output/%s/model_checkpoints.pkl' %(hparams['experiment_name']), 'wb') as f:
+            pickle.dump(model_checkpoint_dict, f)
+
 
     return output
 

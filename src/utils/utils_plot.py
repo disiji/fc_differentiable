@@ -1,5 +1,7 @@
 import matplotlib
 import numpy as np
+import yaml
+import pickle
 
 matplotlib.use('Agg')
 matplotlib.rcParams['font.size'] = 10
@@ -13,6 +15,52 @@ import torch
 from math import *
 import utils.utils_load_data as dh
 from utils.DataAndGatesPlotter import DataAndGatesPlotter
+#from main_1p_full import default_hparams
+from  utils.input import Cll8d1pInput
+
+default_hparams = {
+    'logistic_k': 100,
+    'logistic_k_dafi': 1000,
+    'regularization_penalty': 0,
+    'negative_box_penalty': 0.0,
+    'positive_box_penalty': 0.0,
+    'corner_penalty': .0,
+    'gate_size_penalty': .0,
+    'gate_size_default': (0.5, 0.5),
+    'load_from_pickle': True,
+    'dafi_init': False,
+    'optimizer': "Adam",  # or Adam, SGD
+    'loss_type': 'logistic',  # or MSE
+    'n_epoch_eval': 100,
+    'n_mini_batch_update_gates': 50,
+    'learning_rate_classifier': 0.05,
+    'learning_rate_gates': 0.05,
+    'batch_size': 10,
+    'n_epoch': 1000, 
+    'seven_epochs_for_gate_motion_plot': [0, 50, 100, 200, 300, 400, 500],
+    'test_size': 0.20,
+    'experiment_name': 'default',
+    'random_state': 123,
+    'n_run': 2,
+    'train_alternate': True,
+    'run_logistic_to_convergence': False,
+    'output': {
+        'type': 'full'
+    },
+    'annealing': {
+        'anneal_logistic_k': False,
+        'final_k': 1000,
+        'init_k': 1
+    },
+    'two_phase_training': {
+        'turn_on': False,
+        'num_only_log_loss_epochs': 50
+    },
+    'plot_params':{
+        'figsize': [10, 10],
+        'marker_size': .01,
+    },
+}
 
 def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, normalized=True):
     """
@@ -705,18 +753,16 @@ def plot_pos_and_neg_gate_motion(models_per_iteration, model_dafi, data, hparams
     shuffled_idxs_pos = np.random.permutation(
             int(data_pos.shape[0])
     )
-    print('before', data_pos.shape)
     data_pos_subsampled = data_pos[shuffled_idxs_pos[0:10000]] 
-    print(data_pos_subsampled.shape)
+
     data_neg = np.concatenate(
         [x for idx, x in enumerate(data) if labels[idx] == 0]
     )
     shuffled_idxs_neg = np.random.permutation(
             int(data_neg.shape[0])
     )
-    print('before', data_neg.shape)
     data_neg_subsampled = data_neg[shuffled_idxs_neg[0:10000]]
-    print(data_neg_subsampled.shape)
+
     plot_gate_motion(
             models_per_iteration, model_dafi, data_pos_subsampled, 
             hparams, savename='gate_motion_pos'
@@ -725,21 +771,166 @@ def plot_pos_and_neg_gate_motion(models_per_iteration, model_dafi, data, hparams
             hparams, savename='gate_motion_neg'
     )
 
-# Refactored version of gate motion code
+def parse_hparams(path_to_hparams):
+    hparams = default_hparams
+    with open(path_to_hparams, "r") as f_in:
+        yaml_params = yaml.safe_load(f_in)
+    hparams.update(yaml_params)
+    hparams['init_method'] = "dafi_init" if hparams['dafi_init'] else "random_init"
+    if hparams['train_alternate']:
+        hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
+                hparams['n_mini_batch_update_gates'] - 1)
+    else:
+        hparams['n_epoch_dafi'] = hparams['n_epoch']
+
+    print(hparams)
+    return hparams
+
+def load_output(path_to_hparams):
+        output = {}
+        hparams = parse_hparams(path_to_hparams)
+        output['hparams'] = hparams
+        exp_name = hparams['experiment_name']
+        model_checkpoint_path = '../output/%s/model_checkpoints.pkl'\
+            %hparams['experiment_name']
+
+        with open(model_checkpoint_path, 'rb') as f:
+            model_checkpoint_dict = pickle.load(f)
+        
+        # note that the initial cuts stored in this input
+        # object are not the cuts that this function uses
+        # this input object is only used here because the dafi gates
+        # are saved inside it
+        output['cll_1p_full_input'] = Cll8d1pInput(hparams)
+         
+        output['dafi_tree'] = ModelTree(cll_1p_full_input.reference_tree,
+                              logistic_k=hparams['logistic_k_dafi'],
+                              negative_box_penalty=hparams['negative_box_penalty'],
+                              positive_box_penalty=hparams['positive_box_penalty'],
+                              corner_penalty=hparams['corner_penalty'],
+                              gate_size_penalty=hparams['gate_size_penalty'],
+                              init_tree=None,
+                              loss_type=hparams['loss_type'],
+                              gate_size_default=hparams['gate_size_default'])
+
+
+        output['models_per_iteration'] = [model_checkpoint_dict[iteration] 
+                for iteration in 
+                hparams['seven_epochs_for_gate_motion_plot']
+        ]
+        #call split on input here if theres a bug
+        return output
+
+
+def run_leaf_gate_plots(path_to_hparams):
+    output = load_output(path_to_hparams)
+    detached_data_x_tr = [x.cpu().detach().numpy() for x in cll_1p_full_input.x_train]
+
+    make_leaf_gate_plots(
+        output['models_per_iteration'],
+        output['dafi_tree'],
+        output['hparams'],
+        detached_data_x_tr,
+        cll_1p_full_input.y_train
+    )
+
+#takes in a pre-parsed hparams for now
+def run_gate_motion_from_saved_results(path_to_hparams):
+        #may need torch set device here
+        output = load_output(path_to_hparams)
+        cll_1p_full_input = output['cll_1p_full_input']
+        models_per_iteration = output['models_per_iteration']
+        dafi_tree = output['dafi_tree']
+        hparams = output['hparams']
+
+        #call split on input here if theres a bug
+        detached_data_x_tr = [x.cpu().detach().numpy() for x in cll_1p_full_input.x_train]
+        plot_pos_and_neg_gate_motion(
+                models_per_iteration, 
+                dafi_tree,
+                detached_data_x_tr,
+                hparams,
+                cll_1p_full_input.y_train
+        )
+
+def make_axes_pretty(axes, fig, gate_names, hparams):
+
+    last_noreg_iter_idx = hparams['seven_epochs_for_gate_motion_plot'].index(
+        hparams['two_phase_training']['num_only_log_loss_epochs']        
+    )
+
+    axes[0][last_noreg_iter_idx + 1].plot(
+            [.57, 0.57], [.1, .9], color='black', lw=2,
+            transform=fig.transFigure, clip_on=False
+    ) 
+
+
+    for i in range(4):
+        axes[i][0].set_ylabel(gate_names[i])
+    for i in range(axes.shape[0]):
+        for j in range(axes.shape[1]):
+        #    # dont show y ticks if not in first col
+        #    if (j > 0):
+        #        axes[i][j].get_yaxis().set_ticks([])
+
+        #    # dont show x ticks if not in the last row
+        #    if not (i == axes.shape[0] - 1):
+        #        axes[i][j].get_xaxis().set_ticks([])
+            
+            # add iterations to the first row
+            if i == 0:
+                axes[i][j].set_title(
+                        'Iteration: ' + str(hparams['seven_epochs_for_gate_motion_plot'][j])
+                )
+        
+    fig.tight_layout()
+
+# Refactored version of gate motion code- currently hardcoded for 8-d example
 def plot_gate_motion(models_per_iteration, model_dafi, data, hparams, savename='gate_motion.png'):
 #    plot_params = DEFAULT_PLOT_PARAMS.update(plot_params)
     num_gates = len(model_dafi.children_dict)
     num_iterations = len(models_per_iteration)
     fig, axes = plt.subplots(num_gates, num_iterations,
-                    figsize=hparams['plot_params']['figsize'])
+                    figsize=hparams['plot_params']['figsize'],
+                    sharex=True, sharey=True
+                    )
+
+    gate_names = ['CD45-SSC-H', 'SSC-A, FSC-A', 'CD19-CD5', 'CD79b-CD10']
+
     for iteration, model in enumerate(models_per_iteration):
         plot_data_and_gates(axes[:, iteration], model, data, hparams)
         plot_just_DAFI_gates(axes[:, iteration], model_dafi, data, hparams)
        # plot_data_and_gates(axes[:, iteration], model_dafi, data, hparams)
 
+    make_axes_pretty(axes, fig, gate_names, hparams)
 
     fig.savefig('../output/%s/%s.png' %(hparams['experiment_name'], savename))
 
+
+def make_leaf_gate_plots(models_per_iteration, dafi_tree, hparams, data, labels):
+    fig, axes = plt.subplots(3, 2)
+
+    # dafi gates don't change during training
+    axes[2][0].axis('off')
+    axes[2][2].axis('off')
+
+    # find end of log loss to plot 
+    last_noreg_iter_idx = hparams['seven_epochs_for_gate_motion_plot'].index(
+        hparams['two_phase_training']['num_only_log_loss_epochs']        
+    )
+
+    iters_to_plot = [0, last_noreg_iter_idx, -1]
+    for i in range(2):
+        for j,iter_to_plot in enumerate(iters_to_plot):
+            model = models_per_iteration[iter_to_plot]
+            axis = axes[i][j]
+            plot_just_leaf(axis, model, data, hparams)
+    plot_just_leaf(axes[2][1], output['dafi_tree'], data, hparams)
+
+#note: wont work for general tree graph
+def plot_just_leaf(axis, model, data, hparams):
+    modelPlotter = DataAndGatesPlotter(model, data, hparams)
+    modelPlotter.plot_node(axis, -1, hparams)
 
 def plot_just_DAFI_gates(axes, model, data, hparams):
     modelPlotter = DataAndGatesPlotter(model, data)

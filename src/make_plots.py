@@ -13,7 +13,10 @@ import torch.nn.functional as F
 import torch
 from math import *
 import utils.utils_load_data as dh
-if __name__ == '__main__':
+from utils.utils_plot import run_leaf_gate_plots
+import yaml
+
+def make_dev_data_plots():
     model_path = '../output/single_two_phase_gs=10/model.pkl'
     cell_sz = .1
     with open('../data/cll/x_dev_4d_1p.pkl', 'rb') as f:
@@ -33,3 +36,8 @@ if __name__ == '__main__':
     DAFI_GATES = get_dafi_gates(offset, scale, feature2id)
 
     plot_samples_and_gates_cll_4d_dev(x_dev_list, labels, model, DAFI_GATES, cell_sz=cell_sz)
+
+
+
+if __name__ == '__main__':
+    run_leaf_gate_plots('../configs/testing_full_panel_plots.yaml')

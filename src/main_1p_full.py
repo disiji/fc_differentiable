@@ -53,7 +53,7 @@ default_hparams = {
 }
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
-    torch.cuda.set_device(0)
+    torch.cuda.set_device(1)
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -105,7 +105,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                 model_tree, dafi_tree, hparams, cll_1p_full_input, train_tracker, eval_tracker, run_time)
         elif hparams['output']['type'] == 'lightweight':
             output_metric_dict = run_lightweight_output_no_split_no_dafi(
-                model_tree, dafi_tree, hparams, cll_1p_full_input, train_tracker, eval_tracker, run_time)
+                model_tree, dafi_tree, hparams, cll_1p_full_input, train_tracker, eval_tracker, run_time, model_checkpoint_dict)
         else:
             raise ValueError('Output type not recognized')
 
@@ -134,7 +134,8 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
 if __name__ == '__main__':
     #yaml_filename = '../configs/testing_full_1p.yaml'
-    yaml_filename = '../configs/testing_full_panel_plots.yaml'
+    #yaml_filename = '../configs/testing_full_panel_plots.yaml'
+    yaml_filename = '../configs/full_panel_plots_gs=5.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
