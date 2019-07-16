@@ -1,4 +1,5 @@
 import matplotlib
+import numpy as np
 
 matplotlib.use('Agg')
 matplotlib.rcParams['font.size'] = 10
@@ -696,8 +697,36 @@ def get_dafi_gates(offset, scale, feature2id):
     return dafi_gates
 
 
+def plot_pos_and_neg_gate_motion(models_per_iteration, model_dafi, data, hparams, labels):
+    data_pos = np.concatenate(
+        [x for idx, x in enumerate(data) if labels[idx] == 1]
+    )
+
+    shuffled_idxs_pos = np.random.permutation(
+            int(data_pos.shape[0])
+    )
+    print('before', data_pos.shape)
+    data_pos_subsampled = data_pos[shuffled_idxs_pos[0:10000]] 
+    print(data_pos_subsampled.shape)
+    data_neg = np.concatenate(
+        [x for idx, x in enumerate(data) if labels[idx] == 0]
+    )
+    shuffled_idxs_neg = np.random.permutation(
+            int(data_neg.shape[0])
+    )
+    print('before', data_neg.shape)
+    data_neg_subsampled = data_neg[shuffled_idxs_neg[0:10000]]
+    print(data_neg_subsampled.shape)
+    plot_gate_motion(
+            models_per_iteration, model_dafi, data_pos_subsampled, 
+            hparams, savename='gate_motion_pos'
+    )
+    plot_gate_motion(models_per_iteration, model_dafi, data_neg_subsampled, 
+            hparams, savename='gate_motion_neg'
+    )
+
 # Refactored version of gate motion code
-def plot_gate_motion(models_per_iteration, model_dafi, data, hparams):
+def plot_gate_motion(models_per_iteration, model_dafi, data, hparams, savename='gate_motion.png'):
 #    plot_params = DEFAULT_PLOT_PARAMS.update(plot_params)
     num_gates = len(model_dafi.children_dict)
     num_iterations = len(models_per_iteration)
@@ -706,10 +735,10 @@ def plot_gate_motion(models_per_iteration, model_dafi, data, hparams):
     for iteration, model in enumerate(models_per_iteration):
         plot_data_and_gates(axes[:, iteration], model, data, hparams)
         plot_just_DAFI_gates(axes[:, iteration], model_dafi, data, hparams)
-        #plot_data_and_gates(axes[:, iteration], model_dafi, data, hparams)
+       # plot_data_and_gates(axes[:, iteration], model_dafi, data, hparams)
 
 
-    fig.savefig('../output/%s/gate_motion.png' %hparams['experiment_name'])
+    fig.savefig('../output/%s/%s.png' %(hparams['experiment_name'], savename))
 
 
 def plot_just_DAFI_gates(axes, model, data, hparams):

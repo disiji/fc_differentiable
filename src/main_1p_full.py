@@ -6,7 +6,7 @@ import yaml
 from train import *
 from utils.bayes_gate import ModelTree
 from utils.input import *
-from utils.utils_plot import plot_gate_motion
+from utils.utils_plot import plot_pos_and_neg_gate_motion
 
 default_hparams = {
     'logistic_k': 100,
@@ -122,11 +122,12 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                 hparams['seven_epochs_for_gate_motion_plot']
         ]
         detached_data_x_tr = [x.cpu().detach().numpy() for x in cll_1p_full_input.x_train]
-        plot_gate_motion(
+        plot_pos_and_neg_gate_motion(
                 models_per_iteration, 
                 dafi_tree,
-                detached_data_x_tr[0],
-                hparams
+                detached_data_x_tr,
+                hparams,
+                cll_1p_full_input.y_train
         )
         # model_checkpoint = False
 
