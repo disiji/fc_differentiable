@@ -142,15 +142,24 @@ def free_memory(variables_to_free):
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
+def gate_size_large_enough(model, min_gate_size):
+    flat_gates = model.get_flattened_gates()
+    for gate in flat_gates:
+        if (gate.upp1 - gate.low1) < min_gate_size:
+            return False
+        elif (gate.upp2 - gate.low2) < min_gate_size:
+            return False
+    return True
+
 def run_train_model_two_phase(hparams, input, model_checkpoint=False):
     best_model_so_far = None
     best_log_loss_so_far = 1e10 #just a large number
+    models = []
+    losses = []
+    model_gates_large_enough = []
     for random_init in range(hparams['two_phase_training']['num_random_inits_for_log_loss_only']):
         start = time.time()
         if random_init > 0:
-            # have to free memory to avoid overflowing gpu with uneeded copies of the data and trackers
-            #free_memory([model, train_tracker, eval_tracker, optimizer_classifier, 
-            #    optimizer_gates, model_checkpoint_dict, input, output, output_detached])
             if type(input) == Cll8d1pInput:
                 input = Cll8d1pInput(hparams)
             elif type(input) == Cll4d1pInput:
@@ -246,11 +255,29 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False):
         run_train_only_logistic_regression(model, input.x_train, input.y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
         output = model(input.x_train, input.y_train)
         if best_log_loss_so_far > output['log_loss']:
-            best_log_loss_so_far = output['log_loss']
-            best_model_so_far = model
-        if best_log_loss_so_far < 1e-4:
+            if gate_size_large_enough(model, hparams['two_phase_training']['min_gate_size']): 
+                best_log_loss_so_far = output['log_loss']
+                best_model_so_far = model
+                best_model_idx = len(models)
+        models.append(model)
+        losses.append(output['log_loss'])
+        model_gates_large_enough.append(gate_size_large_enough(model, hparams['two_phase_training']['min_gate_size']))
+        if best_log_loss_so_far < 1e-4 and gate_size_large_enough(model, hparams['two_phase_training']['min_gate_size']):
             break
 
+
+    save_path = '../output/%s/phase1_results.csv' %hparams['experiment_name']
+    with open(save_path, 'a+') as f:
+        f.write('loss, gates_large_enough\n')
+        for i in range(len(models)):
+            if i == best_model_idx:
+                f.write(
+                    '%.4f, %s*\n' %(losses[i], model_gates_large_enough[i])
+                )
+            else:
+                f.write(
+                    '%.4f, %s\n' %(losses[i], model_gates_large_enough[i])
+                )
     print('Best loss obtained within %d random initializationss: %.3f' %(hparams['two_phase_training']['num_random_inits_for_log_loss_only'], best_log_loss_so_far))
 
     # Now train using the regularization terms as well as the log loss

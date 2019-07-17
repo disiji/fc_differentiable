@@ -53,7 +53,7 @@ default_hparams = {
 }
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
-    torch.cuda.set_device(1)
+    torch.cuda.set_device(0)
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -135,7 +135,8 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 if __name__ == '__main__':
     #yaml_filename = '../configs/testing_full_1p.yaml'
     #yaml_filename = '../configs/testing_full_panel_plots.yaml'
-    yaml_filename = '../configs/full_panel_plots_gs=5.yaml'
+    #yaml_filename = '../configs/full_panel_plots_gs=5.yaml'
+    yaml_filename = '../configs/testing_gs_hard_constraint.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)

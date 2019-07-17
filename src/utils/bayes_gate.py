@@ -1,4 +1,5 @@
 from __future__ import division
+from collections import namedtuple
 
 from math import *
 import pdb
@@ -181,12 +182,70 @@ class ModelTree(nn.Module):
             elif self.loss_type == "MSE":
                 self.criterion = nn.MSELoss()
 
+    '''
+    loads the nodes gate params into a namedtuple
+    '''
+    @staticmethod
+    def get_gate(node):
+        # model nodes save the cuts as logits
+        if type(node).__name__ == 'ModelNode':
+            gate_low1 = F.sigmoid(node.gate_low1_param).cpu().detach().numpy()
+            gate_low2 = F.sigmoid(node.gate_low2_param).cpu().detach().numpy()
+            gate_upp1 = F.sigmoid(node.gate_upp1_param).cpu().detach().numpy()
+            gate_upp2 = F.sigmoid(node.gate_upp2_param).cpu().detach().numpy()
+        else:
+            gate_low1 = node.gate_low1_param.cpu().detach().numpy()
+            gate_low2 = node.gate_low2_param.cpu().detach().numpy()
+            gate_upp1 = node.gate_upp1_param.cpu().detach().numpy()
+            gate_upp2 = node.gate_upp2_param.cpu().detach().numpy()
+
+        gate = namedtuple('gate', ['low1', 'upp1', 'low2', 'upp2'])
+        gate.low1 = gate_low1
+        gate.low2 = gate_low2
+        gate.upp1 = gate_upp1
+        gate.upp2 = gate_upp2
+        
+        return gate
+
+    '''
+    applies a function to each node in the
+    model and appends the output to a list
+    '''
+    def apply_function_depth_first(self, function):
+        # lists easily function as stacks in python
+        node_stack = [self.root]
+        outputs = []
+
+        while len(node_stack) > 0:
+            node = node_stack.pop()
+            outputs.append(function(node))
+
+            for child in self.children_dict[str(id(node))]:
+                node_stack.append(child)
+
+        return outputs
+    
+    '''
+    returns a depth first ordering of the
+    model gates as a list of name_tuples 
+    '''
+    def get_flattened_gates(self):
+        return self.apply_function_depth_first(ModelTree.get_gate)
+    
+    # have to custom implement deepcopy so 
+    # the keys for the dictionary are updated
+    # to match the id of the new copied nodes
     def __deepcopy__(self, memo):
+        # These four lines just use the 
+        # default implementation to copy
+        # everything
         deepcopy_method = self.__deepcopy__
         self.__deepcopy__ = None
         cp = deepcopy(self, memo)
         self.__deepcopy__ = deepcopy_method
 
+        # Update the ids in the children_dict
+        # to match the new copies
         root_copy = deepcopy(self.root)
         cp.root = root_copy
         cp.children_dict  = self._deepcopy_children_dict(root_copy)
@@ -235,6 +294,7 @@ class ModelTree(nn.Module):
 #            pdb.set_trace()
 #        print('done copying')
         return dict_copy 
+    
 
     def add(self, reference_tree, init_tree=None):
         """
