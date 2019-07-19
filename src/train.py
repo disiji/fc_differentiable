@@ -98,7 +98,9 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint):
                            gate_size_penalty=hparams['gate_size_penalty'],
                            init_tree=input.init_tree,
                            loss_type=hparams['loss_type'],
-                           gate_size_default=hparams['gate_size_default'])
+                           gate_size_default=hparams['gate_size_default'],
+                           neg_proportion_default=hparams['neg_proportion_default']
+    )
     if hparams['two_phase_training'] == False:
         raise ValueError('Only call run_train_model_two_phase with two phase setup in yaml!')
     classifier_params = [model.linear.weight, model.linear.bias]
@@ -151,12 +153,14 @@ def gate_size_large_enough(model, min_gate_size):
             return False
     return True
 
-def run_train_model_two_phase(hparams, input, model_checkpoint=False):
+def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stopping_threshold=1e-6):
+    entire_start = time.time()
     best_model_so_far = None
     best_log_loss_so_far = 1e10 #just a large number
     models = []
     losses = []
     model_gates_large_enough = []
+    prev_loss = 1e10 # just a large number
     for random_init in range(hparams['two_phase_training']['num_random_inits_for_log_loss_only']):
         start = time.time()
         if random_init > 0:
@@ -244,6 +248,11 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False):
             if model_checkpoint:
                 if epoch+1 in epoch_list:#[100, 200, 300, 400, 500, 600]:
                     model_checkpoint_dict[epoch+1] = deepcopy(model)
+            if torch.abs(prev_loss - loss) < early_stopping_threshold:
+                print('Early Stopping at iteration %d!' %epoch)
+                break
+            prev_loss = loss
+
         print("Running time for training %d epochs: %.3f seconds" % (hparams['two_phase_training']['num_only_log_loss_epochs'], time.time() - start))
         if not(hparams['test_size']) == 0.:
             print("Optimal acc on train and eval during training process: %.3f at [Epoch %d, batch %d] "
@@ -259,6 +268,7 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False):
                 best_log_loss_so_far = output['log_loss']
                 best_model_so_far = model
                 best_model_idx = len(models)
+                best_num_log_loss_epochs = epoch + 1
         models.append(model)
         losses.append(output['log_loss'])
         model_gates_large_enough.append(gate_size_large_enough(model, hparams['two_phase_training']['min_gate_size']))
@@ -286,7 +296,8 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False):
     
     #only train the second part with the best model from before
     model = best_model_so_far
-    for epoch in range(hparams['n_epoch'] - hparams['two_phase_training']['num_only_log_loss_epochs']):
+    # train the rest of the epochs with regularization turned on
+    for epoch in range(hparams['n_epoch'] - best_num_log_loss_epochs):
         #free_memory([output, output_detached, x_train, y_train, x_batch, y_batch])
         # shuffle training data
         idx_shuffle = np.array([i for i in range(len(input.x_train))])
@@ -342,8 +353,8 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False):
 
             # compute
             if hparams['test_size'] == 0.:
-                loss_tuple = (epoch, i, 'full loss:', train_tracker.loss[-1], 'ref_reg:', train_tracker.ref_reg_loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'corner_reg:', train_tracker.corner_reg_loss[-1], 'acc:', train_tracker.acc[-1])
-                print('[Epoch %d, batch %d] %s %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
+                loss_tuple = (epoch, i, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1])
+                print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
             else:
                 print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (
                     epoch, i, train_tracker.loss[-1], eval_tracker.loss[-1]))
@@ -367,9 +378,11 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False):
 
         epoch_list = hparams['seven_epochs_for_gate_motion_plot']
         if model_checkpoint:
-            if epoch+1 + hparams['two_phase_training']['num_only_log_loss_epochs'] in epoch_list:#[100, 200, 300, 400, 500, 600]:
-                model_checkpoint_dict[epoch+1 + hparams['two_phase_training']['num_only_log_loss_epochs']] = deepcopy(model)
+            if epoch+1 + best_num_log_loss_epochs in epoch_list:#[100, 200, 300, 400, 500, 600]:
+                model_checkpoint_dict[epoch+1 + best_num_log_loss_epochs] = deepcopy(model)
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))
+    print('Running time for entire two phase algorithm: %.3f' %(time.time() - entire_start))
+    print(model_checkpoint_dict)
     if not(hparams['test_size']) == 0.:
         print("Optimal acc on train and eval during training process: %.3f at [Epoch %d, batch %d] "
           "and %.3f at [Epoch %d, batch %d]" % (

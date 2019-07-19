@@ -153,12 +153,14 @@ class ModelTree(nn.Module):
                  init_tree=None,
                  loss_type='logistic',
                  gate_size_default=(1. / 2, 1. / 2),
+                 neg_proportion_default=.0001, 
                  classifier=True):
         """
         :param args: pass values for variable n_cell_features, n_sample_features,
         :param kwargs: pass keyworded values for variable logistic_k=?, regularisation_penality=?.
         """
         super(ModelTree, self).__init__()
+        self.neg_proportion_default = neg_proportion_default
         self.logistic_k = logistic_k
         self.regularisation_penalty = regularisation_penalty
         self.positive_box_penalty = positive_box_penalty
@@ -391,11 +393,10 @@ class ModelTree(nn.Module):
             for sample_idx in range(len(y)):
                 if y[sample_idx] == 0:
                     output['emp_reg_loss'] = output['emp_reg_loss'] + self.negative_box_penalty * \
-                                             output['leaf_probs'][sample_idx][0] / (len(y) - sum(y))
+                                             torch.abs(output['leaf_probs'][sample_idx][0] - self.neg_proportion_default)/ (len(y) - sum(y))
                 else:
                     output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
                                              output['leaf_probs'][sample_idx][0] / sum(y)
-
         output['loss'] = loss + output['emp_reg_loss']
         return output
 

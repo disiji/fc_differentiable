@@ -13,6 +13,7 @@ default_hparams = {
     'logistic_k_dafi': 1000,
     'regularization_penalty': 0,
     'negative_box_penalty': 0.0,
+    'negative_proportion_default': 0.0001,
     'positive_box_penalty': 0.0,
     'corner_penalty': .0,
     'gate_size_penalty': .0,
@@ -65,6 +66,8 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
     for random_state in range(random_state_start, hparams['n_run']):
         hparams['random_state'] = random_state
+        np.random.seed(random_state)
+        torch.manual_seed(random_state)
         cll_1p_full_input.split(random_state)
 
         model_tree = ModelTree(cll_1p_full_input.reference_tree,
@@ -76,7 +79,9 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                                gate_size_penalty=hparams['gate_size_penalty'],
                                init_tree=cll_1p_full_input.init_tree,
                                loss_type=hparams['loss_type'],
-                               gate_size_default=hparams['gate_size_default'])
+                               gate_size_default=hparams['gate_size_default'],
+                               neg_proportion_default = hparams['neg_proportion_default']
+                               )
 
         dafi_tree = ModelTree(cll_1p_full_input.reference_tree,
                               logistic_k=hparams['logistic_k_dafi'],
