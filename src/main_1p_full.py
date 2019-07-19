@@ -80,7 +80,8 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                                init_tree=cll_1p_full_input.init_tree,
                                loss_type=hparams['loss_type'],
                                gate_size_default=hparams['gate_size_default'],
-                               neg_proportion_default = hparams['neg_proportion_default']
+                               neg_proportion_default = hparams['neg_proportion_default'],
+                               node_type = hparams['node_type']
                                )
 
         dafi_tree = ModelTree(cll_1p_full_input.reference_tree,

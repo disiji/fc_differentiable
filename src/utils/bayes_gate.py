@@ -47,6 +47,37 @@ class ReferenceTree(object):
         print("n_children and n_leafs in reference tree: (%d, %d), and isLeaf = %r" % (
             self.n_children, self.n_leafs, self.isLeaf))
 
+
+class SquareModelNode(ModelNode):
+    def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=1./4, is_root=False):
+        super(SquareModelNode, self).__init__(
+                logistic_k, reference_tree, init_tree=None, 
+                gate_size_default=1./4, is_root=False
+        )
+
+        # overwrite the parent classes four sides to be a function of a center point
+        # and a side length (since this is a square node only need those three params)
+        # this is a bit hacky, but doing it this way avoids having to change code elsewhere
+        self.upp1 = self.upp1.detach().item()
+        self.low1 = self.low1.detach().item()
+        self.upp2 = self.upp2.detach().item()
+        self.low2 = self.low2.detach().item()
+
+        self.center1 = nn.Parameter((self.upp1 - self.low1)/2., dtype=torch.float32)
+        self.center2 = nn.Parameter(self.upp2 - self.low2)/2., dtype=torch.float32)
+        self.side_length = nn.Parameter(
+                ((self.upp1 - self.low1) + (self.upp2 - self.low2))/2.,
+                dtype=torch.float32
+        )
+
+        self.upp1 = self.center1 + self.side_length/2.
+        self.low1 = self.center1 - self.side_length/2.
+        self.upp2 = self.center2 + self.side_length/2.
+        self.low2 = self.center2 - self.side_length/2.
+        
+
+
+
 #cuts here have to passed through sigmoid activation to get boundaries in (0, 1)
 class ModelNode(nn.Module):
     def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=1. / 4, is_root=False):
@@ -154,7 +185,8 @@ class ModelTree(nn.Module):
                  loss_type='logistic',
                  gate_size_default=(1. / 2, 1. / 2),
                  neg_proportion_default=.0001, 
-                 classifier=True):
+                 classifier=True,
+                 node_type:'rectangle'):
         """
         :param args: pass values for variable n_cell_features, n_sample_features,
         :param kwargs: pass keyworded values for variable logistic_k=?, regularisation_penality=?.
@@ -174,6 +206,7 @@ class ModelTree(nn.Module):
         self.root = self.add(reference_tree, init_tree)
         self.root.is_root = True
         self.n_sample_features = reference_tree.n_leafs
+        self.node_type = node_type
         # define parameters in the logistic regression model
         if self.classifier:
             self.linear = nn.Linear(self.n_sample_features, 1) #default behavior is probably Guassian- check this
@@ -304,8 +337,11 @@ class ModelTree(nn.Module):
         :param reference_tree:
         :return:
         """
-        node = ModelNode(self.logistic_k, reference_tree, init_tree, self.gate_size_default)
-
+        if self.node_type == 'rectangle':
+            node = ModelNode(self.logistic_k, reference_tree, init_tree, self.gate_size_default)
+        elif self.node_type == 'square':
+            node = SquareModelNode(self.logistic_k, reference_tree, init_tree, self.gate_size_default)
+    
         if torch.cuda.is_available():
             node.cuda()
 

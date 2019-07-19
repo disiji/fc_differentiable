@@ -99,7 +99,8 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint):
                            init_tree=input.init_tree,
                            loss_type=hparams['loss_type'],
                            gate_size_default=hparams['gate_size_default'],
-                           neg_proportion_default=hparams['neg_proportion_default']
+                           neg_proportion_default=hparams['neg_proportion_default'],
+                           node_type=hparams['node_type']
     )
     if hparams['two_phase_training'] == False:
         raise ValueError('Only call run_train_model_two_phase with two phase setup in yaml!')
