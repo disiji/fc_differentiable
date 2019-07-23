@@ -14,6 +14,7 @@ import torch
 from math import *
 import utils.utils_load_data as dh
 from utils.utils_plot import run_leaf_gate_plots
+from utils.utils_plot import run_gate_motion_from_saved_results
 import yaml
 
 def make_dev_data_plots():
@@ -40,4 +41,6 @@ def make_dev_data_plots():
 
 
 if __name__ == '__main__':
-    run_leaf_gate_plots('../configs/testing_full_panel_plots.yaml')
+    experiment_yaml_file = '../configs/testing_corner_init.yaml'
+    #run_gate_motion_from_saved_results(experiment_yaml_file)
+    run_leaf_gate_plots(experiment_yaml_file)

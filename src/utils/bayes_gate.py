@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
+import numpy as np
 
 #used only for referenceTree object, cuts here don't have to be passed through sigmoid activations
 class Gate(object):
@@ -48,32 +49,6 @@ class ReferenceTree(object):
             self.n_children, self.n_leafs, self.isLeaf))
 
 
-class SquareModelNode(ModelNode):
-    def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=1./4, is_root=False):
-        super(SquareModelNode, self).__init__(
-                logistic_k, reference_tree, init_tree=None, 
-                gate_size_default=1./4, is_root=False
-        )
-
-        # overwrite the parent classes four sides to be a function of a center point
-        # and a side length (since this is a square node only need those three params)
-        # this is a bit hacky, but doing it this way avoids having to change code elsewhere
-        self.upp1 = self.upp1.detach().item()
-        self.low1 = self.low1.detach().item()
-        self.upp2 = self.upp2.detach().item()
-        self.low2 = self.low2.detach().item()
-
-        self.center1 = nn.Parameter((self.upp1 - self.low1)/2., dtype=torch.float32)
-        self.center2 = nn.Parameter(self.upp2 - self.low2)/2., dtype=torch.float32)
-        self.side_length = nn.Parameter(
-                ((self.upp1 - self.low1) + (self.upp2 - self.low2))/2.,
-                dtype=torch.float32
-        )
-
-        self.upp1 = self.center1 + self.side_length/2.
-        self.low1 = self.center1 - self.side_length/2.
-        self.upp2 = self.center2 + self.side_length/2.
-        self.low2 = self.center2 - self.side_length/2.
         
 
 
@@ -150,6 +125,12 @@ class ModelNode(nn.Module):
         gate_upp1 = F.sigmoid(self.gate_upp1_param)
         gate_upp2 = F.sigmoid(self.gate_upp2_param)
 
+#        print([gate_low1, gate_low2, gate_upp1, gate_upp2])
+#        print([
+#                self.gate_low1_param.detach().item(), self.gate_low2_param.detach().item(), 
+#                self.gate_upp1_param.detach().item(), self.gate_upp2_param.detach().item()
+#        ])
+
        
         logp = F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim1] - gate_low1))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
@@ -165,28 +146,224 @@ class ModelNode(nn.Module):
 #        torch.cat([gate_low1 ** 2 + gate_low2 ** 2, gate_low1 ** 2 + (1 - gate_upp2) ** 2, \
 #            (1 - gate_upp1) ** 2 + gate_low2 ** 2, \
 #            (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2])
-        corner_reg_penalty = torch.sqrt(torch.min(torch.cat([gate_low1 ** 2 + gate_low2 ** 2,
+        
+        corner_reg_penalty = torch.sqrt(torch.min(torch.stack([gate_low1 ** 2 + gate_low2 ** 2,
                                                                  gate_low1 ** 2 + (1 - gate_upp2) ** 2,
                                                                  (1 - gate_upp1) ** 2 + gate_low2 ** 2,
-                                                                 (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2])))
+                                                                 (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2], dim=0)))
         return logp, ref_reg_penalty, size_reg_penalty, corner_reg_penalty
 
+class SquareModelNode(ModelNode):
+    def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=(1./4, 1./4), is_root=False):
+        super(ModelNode, self).__init__()
+        self.logistic_k = logistic_k
+        self.reference_tree = reference_tree
+        self.gate_dim1 = self.reference_tree.gate.gate_dim1
+        self.gate_dim2 = self.reference_tree.gate.gate_dim2
+        self.gate_size_default = gate_size_default
+        self.is_root = is_root
+        if init_tree == None:
+            self.center1_param = nn.Parameter(
+                    torch.tensor(
+                    self.__log_odds_ratio__(
+                        self.reference_tree.gate.gate_low1 + \
+                        (self.reference_tree.gate.gate_upp1 - self.reference_tree.gate.gate_low1)/2.
+                    ), 
+                    dtype=torch.float32
+                )
+            )
+            self.center2_param = nn.Parameter(
+                    torch.tensor(
+                    self.__log_odds_ratio__(
+                        self.reference_tree.gate.gate_low2 + \
+                        (self.reference_tree.gate.gate_upp2 - self.reference_tree.gate.gate_low2)/2.
+                    ), 
+                    dtype=torch.float32
+                )
+            )
+            diff1 = self.reference_tree.gate.gate_upp1 - self.reference_tree.gate.gate_low1
+            diff2 = self.reference_tree.gate.gate_upp2 - self.reference_tree.gate.gate_low2
+            # really should be an average and then lowering value appropiately
+            self.side_length_param = nn.Parameter(
+                    torch.tensor(
+                    self.__log_odds_ratio__(
+                        (diff1 if diff1 < diff2 else diff2)
+                    ), 
+                    dtype=torch.float32
+                )
+            )
+
+        else:
+            self.center1_param = nn.Parameter(
+                    torch.tensor(
+                    self.__log_odds_ratio__(
+                        init_tree.gate.gate_low1 + \
+                        (init_tree.gate.gate_upp1 - init_tree.gate.gate_low1)/2.
+                    ), 
+                    dtype=torch.float32
+                )
+            )
+            self.center2_param = nn.Parameter(
+                    torch.tensor(
+                    self.__log_odds_ratio__(
+                        init_tree.gate.gate_low2 + \
+                        (init_tree.gate.gate_upp2 - init_tree.gate.gate_low2)/2.
+                    ), 
+                    dtype=torch.float32
+                )
+            )
+            diff1 = init_tree.gate.gate_upp1 - init_tree.gate.gate_low1
+            diff2 = init_tree.gate.gate_upp2 - init_tree.gate.gate_low2
+            # really should be an average and then lowering value appropiately
+            self.side_length_param = nn.Parameter(
+                    torch.tensor(
+                    self.__log_odds_ratio__(
+                        (diff1 if diff1 < diff2 else diff2)
+                    ), 
+                    dtype=torch.float32
+                )
+            )
+
+        
+        
+        print(
+                'center [%.3f, %.3f], side_length %.3f' 
+                %(self.center1_param.detach().item(), self.center2_param.detach().item(), self.side_length_param.detach().item())
+        ) 
+
+#        self.gate_upp1_param = self.__log_odds_ratio__(nn.Parameter(self.center1 + self.side_length/2.))
+#        self.gate_low1_param = self.__log_odds_ratio__(nn.Parameter(self.center1 - self.side_length/2.))
+#        self.gate_upp2_param = self.__log_odds_ratio__(nn.Parameter(self.center2 + self.side_length/2.))
+#        self.gate_low2_param = self.__log_odds_ratio__(nn.Parameter(self.center2 - self.side_length/2.))
+
+
+    def forward(self, x):
+        """
+        compute the log probability that each cell passes the gate
+        :param x: (n_cell, n_cell_features)
+        :return: (logp, reg_penalty)
+        """
+
+        gate_upp1 = F.sigmoid(self.center1_param) + F.sigmoid(self.side_length_param)/2.
+        gate_low1 = F.sigmoid(self.center1_param) - F.sigmoid(self.side_length_param)/2.
+        gate_upp2 = F.sigmoid(self.center2_param) +  F.sigmoid(self.side_length_param)/2.
+        gate_low2 = F.sigmoid(self.center2_param) -  F.sigmoid(self.side_length_param)/2.
+
+        
+        
+#        gate_low1 = F.sigmoid(gate_low1_param)
+#        gate_low2 = F.sigmoid(gate_low2_param)
+#        gate_upp1 = F.sigmoid(gate_upp1_param)
+#        gate_upp2 = F.sigmoid(gate_upp2_param)
+#
+#        print([gate_low1, gate_low2, gate_upp1, gate_upp2])
+#        print([
+#                self.gate_low1_param.detach().item(), self.gate_low2_param.detach().item(), 
+#                self.gate_upp1_param.detach().item(), self.gate_upp2_param.detach().item()
+#        ])
+
+       
+        logp = F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim1] - gate_low1))) \
+               + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
+               + F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim2] - gate_low2))) \
+               + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim2] - gate_upp2)))
+        ref_reg_penalty = (gate_low1 - self.reference_tree.gate.gate_low1) ** 2 \
+                          + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
+                          + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
+                          + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
+        size_reg_penalty = (abs(gate_upp1 - gate_low1) - self.gate_size_default[0]) ** 2 + \
+                           (abs(gate_upp2 - gate_low2) - self.gate_size_default[1]) ** 2
+        
+#        torch.cat([gate_low1 ** 2 + gate_low2 ** 2, gate_low1 ** 2 + (1 - gate_upp2) ** 2, \
+#            (1 - gate_upp1) ** 2 + gate_low2 ** 2, \
+#            (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2])
+        
+        corner_reg_penalty = torch.sqrt(torch.min(torch.stack([gate_low1 ** 2 + gate_low2 ** 2,
+                                                                 gate_low1 ** 2 + (1 - gate_upp2) ** 2,
+                                                                 (1 - gate_upp1) ** 2 + gate_low2 ** 2,
+                                                                 (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2], dim=0)))
+        return logp, ref_reg_penalty, size_reg_penalty, corner_reg_penalty
+
+    def __repr__(self):
+        repr_string = ('ModelNode(\n'
+                       '  dims=({dim1}, {dim2}),\n'
+                       '  gate_dim1=({low1:0.4f}, {high1:0.4f}),\n'
+                       '  gate_dim2=({low2:0.4f}, {high2:0.4f}),\n'
+                       ')\n')
+        gate_low1_param = F.sigmoid(self.center1_param) - F.sigmoid(self.side_length_param)/2.
+        gate_low2_param = F.sigmoid(self.center2_param) - F.sigmoid(self.side_length_param)/2.
+        gate_upp1_param = F.sigmoid(self.center1_param) + F.sigmoid(self.side_length_param)/2.
+        gate_upp2_param = F.sigmoid(self.center2_param) + F.sigmoid(self.side_length_param)/2.
+
+        return repr_string.format(
+            dim1=self.gate_dim1,
+            dim2=self.gate_dim2,
+            low1=F.sigmoid(gate_low1_param).item(),
+            high1=F.sigmoid(gate_upp1_param).item(),
+            low2=F.sigmoid(gate_low2_param).item(),
+            high2=F.sigmoid(gate_upp2_param).item()
+        )
+#    def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=(1./4, 1./4), is_root=False):
+#        super(SquareModelNode, self).__init__(
+#                logistic_k, reference_tree, init_tree=init_tree, 
+#                gate_size_default=gate_size_default, is_root=is_root
+#        )
+#
+#        # overwrite the parent classes four sides to be a function of a center point
+#        # and a side length (since this is a square node only need those three params)
+#        # this is a bit hacky, but doing it this way avoids having to change code elsewhere
+#        self.float_gate_upp1_param = F.sigmoid(self.gate_upp1_param).detach().item()
+#        self.float_gate_low1_param = F.sigmoid(self.gate_low1_param).detach().item()
+#        self.float_gate_upp2_param = F.sigmoid(self.gate_upp2_param).detach().item()
+#        self.float_gate_low2_param = F.sigmoid(self.gate_low2_param).detach().item()
+#
+#        self.center1 = nn.Parameter(torch.tensor((self.float_gate_upp1_param - self.float_gate_low1_param)/2., dtype=torch.float32))
+#        self.center2 = nn.Parameter(torch.tensor((self.float_gate_upp2_param - self.float_gate_low2_param)/2., dtype=torch.float32))
+#        self.side_length_float = \
+#                torch.tensor(
+#                ((self.float_gate_upp1_param - self.float_gate_low1_param) + (self.float_gate_upp2_param - self.float_gate_low2_param))/2.,
+#                dtype=torch.float32)
+#        
+#
+#        upp1 = self.center1 + self.side_length_float/2.
+#        upp2 = self.center2 + self.side_length_float/2.
+#        low1 = self.center1 - self.side_length_float/2.
+#        low2 = self.center2 - self.side_length_float/2.
+#        # make sure the resulting square is inside range (0, 1)
+#        while not ((upp1 <= 1.) and (upp2 <= 1.) and (low1 >= 0.) and (low2 >= 0.)):
+#            self.side_length_float = self.side_length_float - 1e-3
+#            upp1 = self.center1 + self.side_length_float/2.
+#            upp2 = self.center2 + self.side_length_float/2.
+#            low1 = self.center1 - self.side_length_float/2.
+#            low2 = self.center2 - self.side_length_float/2.
+#            
+#        self.side_length = nn.Parameter(torch.tensor(self.side_length_float, dtype=torch.float32))
+#
+#        self.gate_upp1_param = self.center1 + self.side_length/2.
+#        self.gate_low1_param = self.center1 - self.side_length/2.
+#        self.gate_upp2_param = self.center2 + self.side_length/2.
+#        self.gate_low2_param = self.center2 - self.side_length/2.
+#        print(
+#            'center: [%.3f, %.3f], side_length: %.3f'
+#            %(self.center1.detach().item(), self.center2.detach().item(), self.side_length.detach().item())
+#        )
 
 class ModelTree(nn.Module):
 
     def __init__(self, reference_tree,
                  logistic_k=100,
-                 regularisation_penalty=10.,
-                 positive_box_penalty=10.,
-                 negative_box_penalty=10.,
-                 corner_penalty=10.,
-                 gate_size_penalty=10.,
+                 regularisation_penalty=0.,
+                 positive_box_penalty=0.,
+                 negative_box_penalty=0.,
+                 corner_penalty=0.,
+                 gate_size_penalty=0.,
+                 feature_diff_penalty=0.,
                  init_tree=None,
                  loss_type='logistic',
                  gate_size_default=(1. / 2, 1. / 2),
                  neg_proportion_default=.0001, 
                  classifier=True,
-                 node_type:'rectangle'):
+                 node_type='rectangle'):
         """
         :param args: pass values for variable n_cell_features, n_sample_features,
         :param kwargs: pass keyworded values for variable logistic_k=?, regularisation_penality=?.
@@ -203,10 +380,10 @@ class ModelTree(nn.Module):
         self.loss_type = loss_type
         self.classifier = classifier
         self.children_dict = nn.ModuleDict()
+        self.node_type = node_type
         self.root = self.add(reference_tree, init_tree)
         self.root.is_root = True
         self.n_sample_features = reference_tree.n_leafs
-        self.node_type = node_type
         # define parameters in the logistic regression model
         if self.classifier:
             self.linear = nn.Linear(self.n_sample_features, 1) #default behavior is probably Guassian- check this
@@ -228,6 +405,23 @@ class ModelTree(nn.Module):
             gate_low2 = F.sigmoid(node.gate_low2_param).cpu().detach().numpy()
             gate_upp1 = F.sigmoid(node.gate_upp1_param).cpu().detach().numpy()
             gate_upp2 = F.sigmoid(node.gate_upp2_param).cpu().detach().numpy()
+        elif type(node).__name__ == 'SquareModelNode':
+            gate_upp1 = torch.clamp(
+                            (F.sigmoid(node.center1_param) + F.sigmoid(node.side_length_param)/2.),
+                            0., 1.
+                        ).cpu().detach().numpy()
+            gate_low1 = torch.clamp(
+                            (F.sigmoid(node.center1_param) - F.sigmoid(node.side_length_param)/2.),
+                            0., 1.
+                        ).cpu().detach().numpy()
+            gate_upp2 = torch.clamp(
+                            (F.sigmoid(node.center2_param) +  F.sigmoid(node.side_length_param)/2.),
+                            0., 1.
+                        ).cpu().detach().numpy()
+            gate_low2 = torch.clamp(
+                            (F.sigmoid(node.center2_param) -  F.sigmoid(node.side_length_param)/2.),
+                            0., 1.
+                        ).cpu().detach().numpy()
         else:
             gate_low1 = node.gate_low1_param.cpu().detach().numpy()
             gate_low2 = node.gate_low2_param.cpu().detach().numpy()
@@ -241,6 +435,7 @@ class ModelTree(nn.Module):
         gate.upp2 = gate_upp2
         
         return gate
+        
 
     '''
     applies a function to each node in the
@@ -341,7 +536,9 @@ class ModelTree(nn.Module):
             node = ModelNode(self.logistic_k, reference_tree, init_tree, self.gate_size_default)
         elif self.node_type == 'square':
             node = SquareModelNode(self.logistic_k, reference_tree, init_tree, self.gate_size_default)
-    
+        else:
+            raise ValueError('Node type %s not implemented' %(self.node_type))
+
         if torch.cuda.is_available():
             node.cuda()
 
@@ -413,11 +610,42 @@ class ModelTree(nn.Module):
         output['leaf_probs'] = leaf_probs
         output['leaf_logp'] = torch.log(leaf_probs)  # Rob: This is weird...
 
+#        if y is not None:
+#            for sample_idx in range(len(y)):
+#                if y[sample_idx] == 0:
+#                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.negative_box_penalty * \
+#                                             torch.abs(output['leaf_probs'][sample_idx][0] - self.neg_proportion_default)/ (len(y) - sum(y))
+#                else:
+#                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
+#                                             output['leaf_probs'][sample_idx][0] / sum(y)
+#        output['loss'] = loss + output['emp_reg_loss']
+
+        # Note: it doesn't look like this is implemented for more than one leaf node!
+        # replacing with torch sum should fix this
+        if y is not None:
+            pos_mean = 0.
+            neg_mean = 0.
+            for sample_idx in range(len(y)):
+                if y[sample_idx] == 0:
+                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.negative_box_penalty * \
+                                             torch.abs(output['leaf_logp'][sample_idx][0] - np.log(self.neg_proportion_default))/ (len(y) - sum(y))
+                    neg_mean = neg_mean + output['leaf_probs'][sample_idx][0]
+                else:
+                    pos_mean = pos_mean + output['leaf_probs'][sample_idx][0]
+            output['feature_diff_reg'] = self.feature_diff_penalty * \
+                                        (1. - ((1./(len(y) - sum(y))) * neg_mean - (1./(sum(y))) * pos_mean)**2)
+            loss = loss + output['feature_diff_reg']
+
+                #else:
+                #    output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
+                #                             output['leaf_probs'][sample_idx][0] / sum(y)
+        loss = loss + output['emp_reg_loss']
+
         if self.classifier:
             if detach_logistic_params:
                 output['leaf_logp'] = output['leaf_logp'].detach()
             output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
-
+        
         if y is not None:
             if self.classifier:
                 if self.loss_type == "logistic":
@@ -426,14 +654,7 @@ class ModelTree(nn.Module):
                     output['log_loss'] = self.criterion(output['y_pred'], y)
                 loss = loss + output['log_loss']
             # add regularization on the number of cells fall into the leaf gate of negative samples;
-            for sample_idx in range(len(y)):
-                if y[sample_idx] == 0:
-                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.negative_box_penalty * \
-                                             torch.abs(output['leaf_probs'][sample_idx][0] - self.neg_proportion_default)/ (len(y) - sum(y))
-                else:
-                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
-                                             output['leaf_probs'][sample_idx][0] / sum(y)
-        output['loss'] = loss + output['emp_reg_loss']
+        output['loss'] = loss
         return output
 
 

@@ -96,6 +96,7 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint):
                            positive_box_penalty=hparams['positive_box_penalty'],
                            corner_penalty=hparams['corner_penalty'],
                            gate_size_penalty=hparams['gate_size_penalty'],
+                           feature_diff_penalty=hparams['feature_diff_penalty'],
                            init_tree=input.init_tree,
                            loss_type=hparams['loss_type'],
                            gate_size_default=hparams['gate_size_default'],
@@ -156,8 +157,12 @@ def gate_size_large_enough(model, min_gate_size):
 
 def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stopping_threshold=1e-6):
     entire_start = time.time()
-    best_model_so_far = None
-    best_log_loss_so_far = 1e10 #just a large number
+    best_so_far_dict = {}
+    best_so_far_dict['best_model_so_far'] = None
+    best_so_far_dict['best_model_checkpoint'] = None
+    best_so_far_dict['best_log_loss_so_far'] = 1e10 #just a large number
+    best_so_far_dict['opt_class'] = None
+    best_so_far_dict['opt_gates'] = None
     models = []
     losses = []
     model_gates_large_enough = []
@@ -264,24 +269,30 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
         output_detached = model(input.x_train, input.y_train, detach_logistic_params=True)
         run_train_only_logistic_regression(model, input.x_train, input.y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
         output = model(input.x_train, input.y_train)
-        if best_log_loss_so_far > output['log_loss']:
+        if best_so_far_dict['best_log_loss_so_far'] > output['log_loss']:
             if gate_size_large_enough(model, hparams['two_phase_training']['min_gate_size']): 
-                best_log_loss_so_far = output['log_loss']
-                best_model_so_far = model
-                best_model_idx = len(models)
+                best_so_far_dict['best_log_loss_so_far'] = output['log_loss']
+                best_so_far_dict['best_model_so_far'] = model
+                best_so_far_dict['best_model_checkpoint_dict'] = model_checkpoint_dict
+                best_so_far_dict['best_model_idx'] = len(models) - 1
                 best_num_log_loss_epochs = epoch + 1
         models.append(model)
         losses.append(output['log_loss'])
         model_gates_large_enough.append(gate_size_large_enough(model, hparams['two_phase_training']['min_gate_size']))
-        if best_log_loss_so_far < 1e-4 and gate_size_large_enough(model, hparams['two_phase_training']['min_gate_size']):
+        if best_so_far_dict['best_log_loss_so_far'] < 1e-4 and gate_size_large_enough(model, hparams['two_phase_training']['min_gate_size']):
             break
 
-
+    if not best_so_far_dict['best_model_so_far']:
+        print('No model found which satisfies having large enough gate size, using last run for plot') 
+        best_so_far_dict['best_model_idx'] = len(models) - 1
+        best_so_far_dict['best_model_so_far'] = models[best_so_far_dict['best_model_idx']]
+        best_so_far_dict['best_model_checkpoint_dict'] = model_checkpoint_dict
+        best_num_log_loss_epochs = epoch + 1
     save_path = '../output/%s/phase1_results.csv' %hparams['experiment_name']
     with open(save_path, 'a+') as f:
         f.write('loss, gates_large_enough\n')
         for i in range(len(models)):
-            if i == best_model_idx:
+            if i == best_so_far_dict['best_model_idx']:
                 f.write(
                     '%.4f, %s*\n' %(losses[i], model_gates_large_enough[i])
                 )
@@ -289,14 +300,15 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
                 f.write(
                     '%.4f, %s\n' %(losses[i], model_gates_large_enough[i])
                 )
-    print('Best loss obtained within %d random initializationss: %.3f' %(hparams['two_phase_training']['num_random_inits_for_log_loss_only'], best_log_loss_so_far))
+    print('Best loss obtained within %d random initializationss: %.3f' %(hparams['two_phase_training']['num_random_inits_for_log_loss_only'], best_so_far_dict['best_log_loss_so_far']))
 
     # Now train using the regularization terms as well as the log loss
     
     start = time.time()
     
     #only train the second part with the best model from before
-    model = best_model_so_far
+    model = best_so_far_dict['best_model_so_far']
+    model_checkpoint_dict = best_so_far_dict['best_model_checkpoint_dict']
     # train the rest of the epochs with regularization turned on
     for epoch in range(hparams['n_epoch'] - best_num_log_loss_epochs):
         #free_memory([output, output_detached, x_train, y_train, x_batch, y_batch])
@@ -383,7 +395,6 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
                 model_checkpoint_dict[epoch+1 + best_num_log_loss_epochs] = deepcopy(model)
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))
     print('Running time for entire two phase algorithm: %.3f' %(time.time() - entire_start))
-    print(model_checkpoint_dict)
     if not(hparams['test_size']) == 0.:
         print("Optimal acc on train and eval during training process: %.3f at [Epoch %d, batch %d] "
           "and %.3f at [Epoch %d, batch %d]" % (

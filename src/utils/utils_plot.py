@@ -11,12 +11,16 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 import torch.nn.functional as F
+import torch.nn as nn
 import torch
 from math import *
 import utils.utils_load_data as dh
 from utils.DataAndGatesPlotter import DataAndGatesPlotter
 #from main_1p_full import default_hparams
 from  utils.input import Cll8d1pInput
+from utils.bayes_gate import ModelTree
+from copy import deepcopy
+
 
 default_hparams = {
     'logistic_k': 100,
@@ -786,6 +790,8 @@ def parse_hparams(path_to_hparams):
     print(hparams)
     return hparams
 
+
+# Currently only works for a chain graph
 def load_output(path_to_hparams):
         output = {}
         hparams = parse_hparams(path_to_hparams)
@@ -796,14 +802,13 @@ def load_output(path_to_hparams):
 
         with open(model_checkpoint_path, 'rb') as f:
             model_checkpoint_dict = pickle.load(f)
-        
         # note that the initial cuts stored in this input
         # object are not the cuts that this function uses
         # this input object is only used here because the dafi gates
         # are saved inside it
         output['cll_1p_full_input'] = Cll8d1pInput(hparams)
          
-        output['dafi_tree'] = ModelTree(cll_1p_full_input.reference_tree,
+        output['dafi_tree'] = ModelTree(output['cll_1p_full_input'].reference_tree,
                               logistic_k=hparams['logistic_k_dafi'],
                               negative_box_penalty=hparams['negative_box_penalty'],
                               positive_box_penalty=hparams['positive_box_penalty'],
@@ -814,27 +819,78 @@ def load_output(path_to_hparams):
                               gate_size_default=hparams['gate_size_default'])
 
 
-        output['models_per_iteration'] = [model_checkpoint_dict[iteration] 
+        output['models_per_iteration'] = [
+                model_checkpoint_dict[iteration] 
                 for iteration in 
                 hparams['seven_epochs_for_gate_motion_plot']
         ]
+        # Checkpoint dictionary is messed up when saving
+        # since str(id(node)) for each node is changed 
+        # (pickling is out of place and makes a new object with a
+        # new id. This only works with a chain graph to make the ids match
+        # the saved object ids
+        fixed_models_per_iteration = []
+        for model in output['models_per_iteration']:
+            cur_node = model.root
+            fixed_children_dict = {}
+            num_nodes = len(model.children_dict.keys())
+            for key, item in model.children_dict.items():
+                fixed_children_dict[str(id(cur_node))] = nn.ModuleList(item)
+                if not len(model.children_dict[key]) == 0:
+                    cur_node = model.children_dict[key][0]
+            model.children_dict = nn.ModuleDict(fixed_children_dict)
+
+
+        print('root id is: ', str(id(output['models_per_iteration'][0].root)))
+        keys = [key for key in output['models_per_iteration'][0].children_dict.keys()]
+        print('keys are: ', output['models_per_iteration'][0].children_dict.keys())
+        print('id of root in new dict is: ', str(id(output['models_per_iteration'][0].children_dict[keys[0]])))
+        print('init model is: ', output['models_per_iteration'][0])
         #call split on input here if theres a bug
         return output
 
 
 def run_leaf_gate_plots(path_to_hparams):
     output = load_output(path_to_hparams)
-    detached_data_x_tr = [x.cpu().detach().numpy() for x in cll_1p_full_input.x_train]
+    hparams = output['hparams']
+    cll_1p_full_input = output['cll_1p_full_input']
+    detached_data_x_tr_pos = np.concatenate(
+                            [
+                                x.cpu().detach().numpy() 
+                                for idx, x in enumerate(cll_1p_full_input.x_train)
+                                if cll_1p_full_input.y_train[idx] == 1.
+                            ]                        
+                        )
+
+    detached_data_x_tr_neg = np.concatenate(
+                            [
+                                x.cpu().detach().numpy() 
+                                for idx, x in enumerate(cll_1p_full_input.x_train)
+                                if cll_1p_full_input.y_train[idx] == 0.
+                            ]                        
+                        )
+    make_leaf_gate_plots(
+        output['models_per_iteration'],
+        output['dafi_tree'],
+        output['hparams'],
+        detached_data_x_tr_pos,
+        cll_1p_full_input.y_train
+    )
+    plt.savefig('../output/%s/leaf_plot_pos.png' %hparams['experiment_name'])
+    plt.clf()
 
     make_leaf_gate_plots(
         output['models_per_iteration'],
         output['dafi_tree'],
         output['hparams'],
-        detached_data_x_tr,
+        detached_data_x_tr_neg,
         cll_1p_full_input.y_train
     )
+    plt.savefig('../output/%s/leaf_plot_neg.png' %hparams['experiment_name'])
+
 
 #takes in a pre-parsed hparams for now
+# currently only works for full batch descent
 def run_gate_motion_from_saved_results(path_to_hparams):
         #may need torch set device here
         output = load_output(path_to_hparams)
@@ -854,15 +910,15 @@ def run_gate_motion_from_saved_results(path_to_hparams):
         )
 
 def make_axes_pretty(axes, fig, gate_names, hparams):
+    if hparams['two_phase_training']['turn_on']:
+        last_noreg_iter_idx = hparams['seven_epochs_for_gate_motion_plot'].index(
+            hparams['two_phase_training']['num_only_log_loss_epochs']        
+        )
 
-    last_noreg_iter_idx = hparams['seven_epochs_for_gate_motion_plot'].index(
-        hparams['two_phase_training']['num_only_log_loss_epochs']        
-    )
-
-    axes[0][last_noreg_iter_idx + 1].plot(
-            [.57, 0.57], [.1, .9], color='black', lw=2,
-            transform=fig.transFigure, clip_on=False
-    ) 
+        axes[0][last_noreg_iter_idx + 1].plot(
+                [.57, 0.57], [.1, .9], color='black', lw=2,
+                transform=fig.transFigure, clip_on=False
+        ) 
 
 
     for i in range(4):
@@ -908,29 +964,46 @@ def plot_gate_motion(models_per_iteration, model_dafi, data, hparams, savename='
 
 
 def make_leaf_gate_plots(models_per_iteration, dafi_tree, hparams, data, labels):
-    fig, axes = plt.subplots(3, 2)
+    fig, axes = plt.subplots(2, 3, sharex=True, sharey=True)
+    print(axes.shape)
 
-    # dafi gates don't change during training
-    axes[2][0].axis('off')
-    axes[2][2].axis('off')
+    # changing one axis xlim and ylim will change the rest
+    # since sharex/y is used
+    axes[0][0].set_xlim(0., 1.)
+    axes[0][0].set_ylim(0., 1.)
 
     # find end of log loss to plot 
     last_noreg_iter_idx = hparams['seven_epochs_for_gate_motion_plot'].index(
         hparams['two_phase_training']['num_only_log_loss_epochs']        
     )
 
-    iters_to_plot = [0, last_noreg_iter_idx, -1]
-    for i in range(2):
-        for j,iter_to_plot in enumerate(iters_to_plot):
-            model = models_per_iteration[iter_to_plot]
-            axis = axes[i][j]
-            plot_just_leaf(axis, model, data, hparams)
-    plot_just_leaf(axes[2][1], output['dafi_tree'], data, hparams)
+    # plot top row for model gates
+    iters_idx_to_plot = [0, last_noreg_iter_idx, -1]
+    iterations = [
+            0, 
+            hparams['two_phase_training']['num_only_log_loss_epochs'],
+            hparams['n_epoch']
+    ]
+    for j,iter_idx_to_plot in enumerate(iters_idx_to_plot):
+        model = models_per_iteration[iter_idx_to_plot]
+        axis = axes[0][j]
+        axis.set_title('Iteration %d' %iterations[j])
+        plot_just_leaf(axis, model, data, hparams)
+    axes[0][0].set_ylabel('Leaf (CD79b-CD10)')
+    # plot dafi gates and filtered data
+    axes[1][1].set_title('Dafi Leaf')
+    plot_just_leaf(axes[1][1], dafi_tree, data, hparams)
+    # dafi gates don't change during training
+    fig.delaxes(axes[1][0])
+    fig.delaxes(axes[1][2])
+    fig.tight_layout()
+    plt.savefig('../output/%s/leaf_plot.png' %(hparams['experiment_name']))
+
 
 #note: wont work for general tree graph
 def plot_just_leaf(axis, model, data, hparams):
-    modelPlotter = DataAndGatesPlotter(model, data, hparams)
-    modelPlotter.plot_node(axis, -1, hparams)
+    modelPlotter = DataAndGatesPlotter(model, data)
+    modelPlotter.plot_node(axis, len(modelPlotter.gates) - 1, hparams)
 
 def plot_just_DAFI_gates(axes, model, data, hparams):
     modelPlotter = DataAndGatesPlotter(model, data)

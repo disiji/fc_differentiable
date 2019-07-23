@@ -3,6 +3,7 @@ import numpy
 from collections import namedtuple
 import utils.utils_load_data as dh
 import torch.nn.functional as F
+from utils.bayes_gate import ModelTree
 
 class DataAndGatesPlotter():
 
@@ -36,24 +37,7 @@ class DataAndGatesPlotter():
     '''
     @staticmethod
     def get_gate(node):
-        # model nodes save the cuts as logits
-        if type(node).__name__ == 'ModelNode':
-            gate_low1 = F.sigmoid(node.gate_low1_param).cpu().detach().numpy()
-            gate_low2 = F.sigmoid(node.gate_low2_param).cpu().detach().numpy()
-            gate_upp1 = F.sigmoid(node.gate_upp1_param).cpu().detach().numpy()
-            gate_upp2 = F.sigmoid(node.gate_upp2_param).cpu().detach().numpy()
-        else:
-            gate_low1 = node.gate_low1_param.cpu().detach().numpy()
-            gate_low2 = node.gate_low2_param.cpu().detach().numpy()
-            gate_upp1 = node.gate_upp1_param.cpu().detach().numpy()
-            gate_upp2 = node.gate_upp2_param.cpu().detach().numpy()
-
-        gate = namedtuple('gate', ['low1', 'upp1', 'low2', 'upp2'])
-        gate.low1 = gate_low1
-        gate.low2 = gate_low2
-        gate.upp1 = gate_upp1
-        gate.upp2 = gate_upp2
-        
+        gate = ModelTree.get_gate(node)
         return gate
 
     @staticmethod
@@ -159,7 +143,7 @@ class DataAndGatesPlotter():
             self.filtered_data[node_idx][:, self.dims[node_idx][1]],
             s=hparams['plot_params']['marker_size'],
         )
-        if type(self.model.root).__name__ == 'ModelNode':
+        if type(self.model.root).__name__ == 'ModelNode' or type(self.model.root).__name__ == 'SquareModelNode':
             self.plot_gate(axis, node_idx, dashes=(3,1), label='Model')
         else:
             self.plot_gate(axis, node_idx, color='k', label='DAFI')

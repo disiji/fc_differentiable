@@ -192,7 +192,8 @@ class Cll4d1pInput(CLLInputBase):
         print(self.feature2id, offset, scale, self.reference_nested_list)
         self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
                                                               self.feature2id)
-        self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
+        if not self.hparams['init_type'] == 'random_corner':
+            self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
 
     def _construct_(self):
         self.reference_tree = ReferenceTree(self.reference_nested_list, self.feature2id)
@@ -312,8 +313,36 @@ class Cll8d1pInput(Cll4d1pInput):
             cut_var = 400 #about one tenth of the range
             min_size = 500 * 500
             self.init_nested_list = self._get_random_init_nested_list_(size_mean, size_var, cut_var, min_size=3)
+        elif hparams['init_type'] == 'random_corner':
+            self.init_nested_list = self._get_random_corner_init(size_default=hparams['corner_init_deterministic_size']) 
         else:
             self.init_nested_list = self._get_middle_plots_init_nested_list_()
+
+    def _get_corner_gate(self, corner, size):
+        gate = [
+            corner[0] - size if corner[0] == 1 else 0., 
+            corner[0] + size if corner[0] == 0 else 1., 
+            corner[1] - size if corner[1] == 1 else 0., 
+            corner[1] + size if corner[1] == 0 else 1.
+        ]
+        return gate
+
+    def _get_random_corner_init(self, randomly_sample_size=False, size_default=0.75):
+        # just using this to iterate properly over the gates
+        middle_gates = self._get_middle_plots_flattened_list_()
+        random_flat_gates = []
+        for g in range(len(middle_gates)):
+            corner = [np.random.randint(2), np.random.randint(2)]
+
+            if randomly_sample_size:
+                size = np.random.uniform(.1, .5)
+            else:
+                size = size_default
+
+            random_flat_gates.append(self._get_corner_gate(corner, size))
+        print('random flat gates is: ', random_flat_gates)
+        return (self._convert_flattened_list_to_nested_(random_flat_gates))
+
 
 
 

@@ -16,6 +16,7 @@ default_hparams = {
     'negative_proportion_default': 0.0001,
     'positive_box_penalty': 0.0,
     'corner_penalty': .0,
+    'feature_diff_penalty': 0.,
     'gate_size_penalty': .0,
     'gate_size_default': (0.5, 0.5),
     'load_from_pickle': True,
@@ -33,6 +34,8 @@ default_hparams = {
     'experiment_name': 'default',
     'random_state': 123,
     'n_run': 2,
+    'init_type': 'random_corner',
+    'corner_init_deterministic_size': .75,
     'train_alternate': True,
     'run_logistic_to_convergence': False,
     'output': {
@@ -66,8 +69,8 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
     for random_state in range(random_state_start, hparams['n_run']):
         hparams['random_state'] = random_state
-        np.random.seed(random_state)
-        torch.manual_seed(random_state)
+        #np.random.seed(random_state)
+        #torch.manual_seed(random_state)
         cll_1p_full_input.split(random_state)
 
         model_tree = ModelTree(cll_1p_full_input.reference_tree,
@@ -76,6 +79,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                                negative_box_penalty=hparams['negative_box_penalty'],
                                positive_box_penalty=hparams['positive_box_penalty'],
                                corner_penalty=hparams['corner_penalty'],
+                               feature_diff_penalty=hparams['feature_diff_penalty'],
                                gate_size_penalty=hparams['gate_size_penalty'],
                                init_tree=cll_1p_full_input.init_tree,
                                loss_type=hparams['loss_type'],
@@ -127,6 +131,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                 for iteration in 
                 hparams['seven_epochs_for_gate_motion_plot']
         ]
+        #print(models_per_iteration)
         detached_data_x_tr = [x.cpu().detach().numpy() for x in cll_1p_full_input.x_train]
         plot_pos_and_neg_gate_motion(
                 models_per_iteration, 
@@ -142,7 +147,8 @@ if __name__ == '__main__':
     #yaml_filename = '../configs/testing_full_1p.yaml'
     #yaml_filename = '../configs/testing_full_panel_plots.yaml'
     #yaml_filename = '../configs/full_panel_plots_gs=5.yaml'
-    yaml_filename = '../configs/testing_gs_hard_constraint.yaml'
+    yaml_filename = '../configs/testing_corner_init.yaml'
+    #yaml_filename = '../configs/testing_gs_hard_constraint.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
