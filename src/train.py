@@ -255,8 +255,9 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
                 if epoch+1 in epoch_list:#[100, 200, 300, 400, 500, 600]:
                     model_checkpoint_dict[epoch+1] = deepcopy(model)
             if torch.abs(prev_loss - loss) < early_stopping_threshold:
-                print('Early Stopping at iteration %d!' %epoch)
-                break
+                pass # this breaks the plotting code :/
+                #print('Early Stopping at iteration %d!' %epoch)
+                #break
             prev_loss = loss
 
         print("Running time for training %d epochs: %.3f seconds" % (hparams['two_phase_training']['num_only_log_loss_epochs'], time.time() - start))
@@ -276,6 +277,8 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
                 best_so_far_dict['best_model_checkpoint_dict'] = model_checkpoint_dict
                 best_so_far_dict['best_model_idx'] = len(models) - 1
                 best_num_log_loss_epochs = epoch + 1
+            else:
+                print('gates are too small to select')
         models.append(model)
         losses.append(output['log_loss'])
         model_gates_large_enough.append(gate_size_large_enough(model, hparams['two_phase_training']['min_gate_size']))
@@ -366,8 +369,8 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
 
             # compute
             if hparams['test_size'] == 0.:
-                loss_tuple = (epoch, i, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1])
-                print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
+                loss_tuple = (epoch, i, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1], 'prop_diff_reg:', train_tracker.feature_diff_loss[-1])
+                print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
             else:
                 print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (
                     epoch, i, train_tracker.loss[-1], eval_tracker.loss[-1]))

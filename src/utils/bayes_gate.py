@@ -375,6 +375,7 @@ class ModelTree(nn.Module):
         self.positive_box_penalty = positive_box_penalty
         self.negative_box_penalty = negative_box_penalty
         self.corner_penalty = corner_penalty
+        self.feature_diff_penalty = feature_diff_penalty
         self.gate_size_penalty = gate_size_penalty
         self.gate_size_default = gate_size_default
         self.loss_type = loss_type
@@ -632,8 +633,9 @@ class ModelTree(nn.Module):
                     neg_mean = neg_mean + output['leaf_probs'][sample_idx][0]
                 else:
                     pos_mean = pos_mean + output['leaf_probs'][sample_idx][0]
+            # use the average mean to normal the difference so the square isn't so tiny
             output['feature_diff_reg'] = self.feature_diff_penalty * \
-                                        (1. - ((1./(len(y) - sum(y))) * neg_mean - (1./(sum(y))) * pos_mean)**2)
+                                         -torch.log((((1./(len(y) - sum(y))) * neg_mean - (1./(sum(y))) * pos_mean))**2)
             loss = loss + output['feature_diff_reg']
 
                 #else:
