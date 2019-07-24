@@ -437,6 +437,40 @@ class ModelTree(nn.Module):
         
         return gate
         
+    @staticmethod
+    def filter_data_at_single_node(data, node):
+        gate = ModelTree.get_gate(node)
+        filtered_data = dh.filter_rectangle(
+                data, node.gate_dim1, 
+                node.gate_dim2, gate.low1, gate.upp1, 
+                gate.low2, gate.upp2
+        )
+        return filtered_data
+
+    def filter_data_to_leaf(self, data):
+        # the second to last entry is the leaf node's data, while the last is the data filtered by the leaf node's gate
+        return self.filter_data(data)[-2]
+
+    def filter_data(self, data):
+        # lists easily function as stacks in python
+        node_stack = [self.root]
+        # keep track of each's node parent data after filtering
+        data_stack = [data]
+        
+        filtered_data = [data]
+
+        while len(node_stack) > 0:
+            node = node_stack.pop()
+            cur_data = data_stack.pop()
+            filtered_data.append(self.filter_data_at_single_node(cur_data, node))
+
+            for child in self.model.children_dict[str(id(node))]:
+                node_stack.append(child)
+                # push the same data onto the stack since the
+                # children share the same parent
+                data_stack.append(filtered_data[-1])
+
+        return filtered_data
 
     '''
     applies a function to each node in the
