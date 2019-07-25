@@ -15,6 +15,7 @@ import torch.nn as nn
 from utils.bayes_gate import ModelTree
 from utils.input import Cll4d1pInput
 from utils.input import Cll8d1pInput
+from utils.CellOverlaps import CellOverlaps
 
 def run_train_dafi(dafi_model, hparams, input):
     """
@@ -275,7 +276,8 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
                 best_so_far_dict['best_log_loss_so_far'] = output['log_loss']
                 best_so_far_dict['best_model_so_far'] = model
                 best_so_far_dict['best_model_checkpoint_dict'] = model_checkpoint_dict
-                best_so_far_dict['best_model_idx'] = len(models) - 1
+                # current model is appended at end of loop
+                best_so_far_dict['best_model_idx'] = len(models)
                 best_num_log_loss_epochs = epoch + 1
             else:
                 print('gates are too small to select')
@@ -622,7 +624,25 @@ def no_overlap(flat_gate_model, flat_gate_dafi):
 
     return (no_d1_overlap or no_d2_overlap)
     
-        
+def run_write_overlap_diagnostics(model, dafi_tree, data_list, labels, hparams):
+    overlaps = CellOverlaps(model, dafi_tree, data_list)
+    overlap_diagnostics = overlaps.compute_overlap_diagnostics()
+    path_to_output = '../output/%s/leaf_overlap_diagnostics.csv' %hparams['experiment_name']
+    with open(path_to_output, 'a+') as f:
+        col_names = (
+                'in both', 
+                'in model but not DAFI', 
+                'in DAFI but not model',
+                'cells in model leaf',
+                'cells in DAFI leaf',
+                'labels',
+        )
+        f.write('%s, %s, %s, %s, %s,  %s\n' %col_names)
+        for i, overlap_diagnostic in enumerate(overlap_diagnostics):
+            f.write('%d, %d, %d, %d, %d' %(overlap_diagnostic))
+            f.write(', %d\n' %labels[i])
+
+
         
 #def get_dafi_overlap_all_nodes(model, dafi_tree):
 #    this_level_model = [model.root]
@@ -662,7 +682,7 @@ def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, tr
                 
     else:
         with open('../output/%s/results_cll_4D.csv' % hparams['experiment_name'], "a+") as file:
-            results_names = 'seed, overall_acc, log_loss, run_time'
+            results_names = 'seed, overall_acc, log_loss, run_time, '
             file.write(results_names + '\n')
             file.write(
                 "%d, %.3f, %.3f, %.3f\n" % (

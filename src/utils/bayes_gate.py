@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
 import numpy as np
+import utils.utils_load_data as dh
 
 #used only for referenceTree object, cuts here don't have to be passed through sigmoid activations
 class Gate(object):
@@ -464,7 +465,7 @@ class ModelTree(nn.Module):
             cur_data = data_stack.pop()
             filtered_data.append(self.filter_data_at_single_node(cur_data, node))
 
-            for child in self.model.children_dict[str(id(node))]:
+            for child in self.children_dict[str(id(node))]:
                 node_stack.append(child)
                 # push the same data onto the stack since the
                 # children share the same parent

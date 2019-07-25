@@ -192,7 +192,7 @@ class Cll4d1pInput(CLLInputBase):
         print(self.feature2id, offset, scale, self.reference_nested_list)
         self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
                                                               self.feature2id)
-        if not self.hparams['init_type'] == 'random_corner':
+        if not (self.hparams['init_type'] == 'random_corner' or self.hparams['init_type'] == 'same_corners_as_DAFI'):
             self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
 
     def _construct_(self):
@@ -314,7 +314,9 @@ class Cll8d1pInput(Cll4d1pInput):
             min_size = 500 * 500
             self.init_nested_list = self._get_random_init_nested_list_(size_mean, size_var, cut_var, min_size=3)
         elif hparams['init_type'] == 'random_corner':
-            self.init_nested_list = self._get_random_corner_init(size_default=hparams['corner_init_deterministic_size']) 
+            self.init_nested_list = self._get_random_corner_init(size_default=hparams['corner_init_deterministic_size'])
+        elif hparams['init_type'] == 'same_corners_as_DAFI':
+            self.init_nested_list = self._get_same_corners_as_DAFI_init()
         else:
             self.init_nested_list = self._get_middle_plots_init_nested_list_()
 
@@ -326,6 +328,30 @@ class Cll8d1pInput(Cll4d1pInput):
             corner[1] + size if corner[1] == 0 else 1.
         ]
         return gate
+
+    def _get_same_corners_as_DAFI_init(self):
+
+        same_corners_as_DAFI_init = \
+            [
+                [[u'SSC-H', 0., 0.5], [u'CD45', .5, 1.]],
+                [
+                    [
+                        [[u'FSC-A', 0., .5], [u'SSC-A', 0., .5]],
+                        [
+                            [
+                                [[u'CD5', .5, 1.], [u'CD19', .5, 1.]],
+                                [
+                                    [
+                                        [[u'CD10', 0, .5], [u'CD79b', 0, .5]],
+                                        []
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        return same_corners_as_DAFI_init
 
     def _get_random_corner_init(self, randomly_sample_size=False, size_default=0.75):
         # just using this to iterate properly over the gates
