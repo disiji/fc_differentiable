@@ -179,6 +179,7 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
                 raise ValueError('Class of input object not yet supported, update train.py')
         model, train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict = init_model_trackers_and_optimizers(hparams, input, model_checkpoint)
         # First train just the logistic regressor for each init
+        epoch = 0
         for epoch in range(hparams['two_phase_training']['num_only_log_loss_epochs']):
             
             # shuffle training data
@@ -639,7 +640,7 @@ def run_write_overlap_diagnostics(model, dafi_tree, data_list, labels, hparams):
         )
         f.write('%s, %s, %s, %s, %s,  %s\n' %col_names)
         for i, overlap_diagnostic in enumerate(overlap_diagnostics):
-            f.write('%d, %d, %d, %d, %d' %(overlap_diagnostic))
+            f.write('%d, %d, %d, %d, %d' %(tuple(overlap_diagnostic)))
             f.write(', %d\n' %labels[i])
 
 

@@ -8,6 +8,13 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import os
 import numpy as np
+from utils.ParameterParser import ParameterParser
+from utils.CellOverlaps import CellOverlaps
+from utils.bayes_gate import ModelTree
+from utils.input import Cll8d1pInput
+import utils.utils_load_data as dh
+import torch.nn as nn
+
 column_names = ['random_state',
                 'train_accuracy',
                 'eval_accuracy',
@@ -217,16 +224,261 @@ def avg_results(results_path):
         
     return {'avg_acc' : sum(accs)/len(accs), 
             'avg_log_loss' :sum(log_losses)/len(log_losses)}
-          
+
+def make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hparams):
+    concatenated_data = make_data_with_dafi_gate_flags_and_ids(path_to_hparams)
+    savepath = '../data/concatenated_8d_data_with_dafi_filtering_indicators.csv'
+    write_concatenated_8d_data_with_dafi_gate_flags_and_ids(concatenated_data, savepath)
+
     
+
+
+def write_concatenated_8d_data_with_dafi_gate_flags_and_ids(concatenated_data, savepath):
+    COL_NAMES = (
+                    'FSC-A',
+                    'SSC-H',
+                    'CD45',
+                    'SSC-A',
+                    'CD5',
+                    'CD19',
+                    'CD10',
+                    'CD79b',
+                    'sample_ids',
+                    'labels',
+                    'cell_ids',
+                    'In Dafi Gate1',
+                    'In Dafi Gate2',
+                    'In Dafi Gate3',
+                    'In Dafi Gate4',
+                )
+    with open(savepath, 'w') as f:
+        f.write('%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s\n' %COL_NAMES)
+        for cell_row in concatenated_data:
+            for i in range(4):
+                if cell_row[-(i + 1)] == True:
+                    cell_row[-(i + 1)] = 1
+                else:
+                    cell_row[-(i + 1)] = 0
+            f.write('%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %d, %d, %d, %d\n' %tuple(cell_row))
+
+
+def parse_hparams(path_to_hparams):
+    hparams = default_hparams
+    with open(path_to_hparams, "r") as f_in:
+        yaml_params = yaml.safe_load(f_in)
+    hparams.update(yaml_params)
+    hparams['init_method'] = "dafi_init" if hparams['dafi_init'] else "random_init"
+    if hparams['train_alternate']:
+        hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
+                hparams['n_mini_batch_update_gates'] - 1)
+    else:
+        hparams['n_epoch_dafi'] = hparams['n_epoch']
+
+    print(hparams)
+    return hparams
+
+def load_output(path_to_hparams):
+        output = {}
+        hparams = ParameterParser(path_to_hparams).parse_params()
+        output['hparams'] = hparams
+        exp_name = hparams['experiment_name']
+        model_checkpoint_path = '../output/%s/model_checkpoints.pkl'\
+            %hparams['experiment_name']
+
+        with open(model_checkpoint_path, 'rb') as f:
+            model_checkpoint_dict = pickle.load(f)
+        # note that the initial cuts stored in this input
+        # object are not the cuts that this function uses
+        # this input object is only used here because the dafi gates
+        # are saved inside it
+        output['cll_1p_full_input'] = Cll8d1pInput(hparams)
+         
+        output['dafi_tree'] = ModelTree(output['cll_1p_full_input'].reference_tree,
+                              logistic_k=hparams['logistic_k_dafi'],
+                              negative_box_penalty=hparams['negative_box_penalty'],
+                              positive_box_penalty=hparams['positive_box_penalty'],
+                              corner_penalty=hparams['corner_penalty'],
+                              gate_size_penalty=hparams['gate_size_penalty'],
+                              init_tree=None,
+                              loss_type=hparams['loss_type'],
+                              gate_size_default=hparams['gate_size_default'])
+
+
+        output['models_per_iteration'] = [
+                model_checkpoint_dict[iteration] 
+                for iteration in 
+                hparams['seven_epochs_for_gate_motion_plot']
+        ]
+        # Checkpoint dictionary is messed up when saving
+        # since str(id(node)) for each node is changed 
+        # (pickling is out of place and makes a new object with a
+        # new id. This only works with a chain graph to make the ids match
+        # the saved object ids
+        fixed_models_per_iteration = []
+        for model in output['models_per_iteration']:
+            cur_node = model.root
+            fixed_children_dict = {}
+            num_nodes = len(model.children_dict.keys())
+            for key, item in model.children_dict.items():
+                fixed_children_dict[str(id(cur_node))] = nn.ModuleList(item)
+                if not len(model.children_dict[key]) == 0:
+                    cur_node = model.children_dict[key][0]
+            model.children_dict = nn.ModuleDict(fixed_children_dict)
+
+
+        print('root id is: ', str(id(output['models_per_iteration'][0].root)))
+        keys = [key for key in output['models_per_iteration'][0].children_dict.keys()]
+        print('keys are: ', output['models_per_iteration'][0].children_dict.keys())
+        print('id of root in new dict is: ', str(id(output['models_per_iteration'][0].children_dict[keys[0]])))
+        print('init model is: ', output['models_per_iteration'][0])
+        #call split on input here if theres a bug
+        return output
+
+def write_ranked_features_model_dafi(path_to_hparams):
+    output = load_output(path_to_hparams)
+    hparams = output['hparams']
+    model = output['models_per_iteration'][-1]
+    dafi = output['dafi_tree']
+    x_list = output['cll_1p_full_input'].x_train
+    labels = output['cll_1p_full_input'].y_train
+    features_model = []
+    feature_dafi = []
+    for idx, x in enumerate(x_list):
+        print(x.shape)
+        model_results = model(x)
+        dafi_results = dafi(x)
+        features_model.append([model_results['leaf_probs'][0], idx, labels[idx]])
+        features_dafi.append([dafi_results['leaf_probs'][0], idx, labels[idx]])
+    features_model = np.array(features_model).sort(axis=0)
+    features_dafi = np.array(features_dafi).sort(axis=0)
+    savepath = '../output/%s/ranked_features_table' % hparams['experiment_name']
+    with open(savepath, 'w') as f:
+        f.write('ranked features from model, sample id, matching label, ranked features from dafi, sample id, matching label\n')
+        for idx, label in enumerate(labels):
+            row = (
+                    features_model[idx][0], features_model[idx][1],
+                    features_model[idx][2],
+                    features_dafi[idx][0], features_dafi[idx][1],
+                    features_dafi[idx][2]
+
+            )
+            f.write('%.4f, %.4f, %.4f, %.4f, %.4f, %.4f\n' %row)
+
+
+def load_from_pickle(path_to_file):
+    with open(path_to_file, 'rb') as f:
+        loaded_object = pickle.load(f)
+    return loaded_object
+
+def make_data_with_dafi_gate_flags_and_ids(path_to_hparams):
+    hparams = ParameterParser(path_to_hparams).parse_params()
+    
+    cll_1p_full_input = Cll8d1pInput(hparams)
+    dafi_tree = make_dafi_tree(hparams, cll_1p_full_input)
+    x_list = cll_1p_full_input.unnormalized_x_list_of_numpy
+    y_list = cll_1p_full_input.y_numpy
+    for sample_id, (x, y) in enumerate(zip(x_list, y_list)):
+        x_with_sample_id = np.hstack([x, sample_id * np.ones([x.shape[0], 1])])
+        x_with_sample_id_and_label = np.hstack([x_with_sample_id, y * np.ones([x.shape[0], 1])])
+        # wrote a function to get unique cell ids in this class already
+        
+        x_with_sample_ids_cell_ids_and_labels = CellOverlaps(dafi_tree, dafi_tree, [x_with_sample_id_and_label]).data_list_with_ids[0]
+
+        #filtered_data = dafi_tree.filter_data(x_with_sample_ids_cell_ids_and_labels)
+        flat_gates = [
+            [102., 921., 2048., 3891.],
+            [921., 2150., 102., 921.],
+            [1638., 3891., 2150., 3891.],
+            [0, 1228., 0.,1843.]
+        ]
+        
+        flat_ids = dafi_tree.get_flat_ids()
+        filtered_data = filter_data(
+                x_with_sample_ids_cell_ids_and_labels,
+                flat_gates,
+                flat_ids
+        )
+        print(x_with_sample_ids_cell_ids_and_labels[:, -1])
+        print(y)
+        print(filtered_data[0].shape, x.shape)
+        print(filtered_data[1].shape)
+        print(filtered_data[2].shape)
+        print(filtered_data[3].shape)
+        print(filtered_data[4].shape)
+        gate_1_flags = np.isin(x_with_sample_ids_cell_ids_and_labels[:, -1], filtered_data[1][:, -1])
+        gate_2_flags = np.isin(x_with_sample_ids_cell_ids_and_labels[:, -1], filtered_data[2][:, -1])
+        gate_3_flags = np.isin(x_with_sample_ids_cell_ids_and_labels[:, -1], filtered_data[3][:, -1])
+        gate_4_flags = np.isin(x_with_sample_ids_cell_ids_and_labels[:, -1], filtered_data[4][:, -1])
+
+        x_all_cols = np.hstack(
+                [
+                    x_with_sample_ids_cell_ids_and_labels, 
+                    gate_1_flags[:, np.newaxis], gate_2_flags[:, np.newaxis], gate_3_flags[:, np.newaxis], gate_4_flags[:, np.newaxis]
+                ]
+        )
+
+        if sample_id == 0:
+            catted_data = x_all_cols
+        else:
+            catted_data = np.concatenate([catted_data, x_all_cols])
+
+        
+    return catted_data
+
+
+
+def filter_single_flat_gate(data, gate, ids):
+    print(ids)
+    filtered_data = dh.filter_rectangle(
+            data, ids[0], 
+            ids[1], gate[0], gate[1], 
+            gate[2], gate[3]
+    )
+    return filtered_data
+
+def filter_data(data, flat_gates, flat_ids):
+    filtered_data = [data]
+    for gate, ids in zip(flat_gates, flat_ids):
+        filtered_data.append(
+                filter_single_flat_gate(filtered_data[-1], gate, ids)
+        )
+    return filtered_data
+
+
+
+
+
+
+def make_dafi_tree(hparams, cll_1p_full_input):
+    dafi_tree = ModelTree(cll_1p_full_input.get_unnormalized_reference_tree(),
+                          logistic_k=hparams['logistic_k_dafi'],
+                          negative_box_penalty=hparams['negative_box_penalty'],
+                          positive_box_penalty=hparams['positive_box_penalty'],
+                          corner_penalty=hparams['corner_penalty'],
+                          gate_size_penalty=hparams['gate_size_penalty'],
+                          init_tree=None,
+                          loss_type=hparams['loss_type'],
+                          gate_size_default=hparams['gate_size_default'])
+    return dafi_tree
+
+#def test_filtered_data_matches_overlap_results():
+#    filtered_path = '../output/'
+#    overlap_path = ''
+#    with open(filtered_path, 'r') as f:
+#        cell_rows = f.readlines()
+#    with open(overlap_path, 'r') as f:
+#        pass
 
 
 if __name__ == '__main__':
     
     #combine_results_into_one_csv('../output/logreg_to_conv_grid_search', '../output/agg_results_logreg_to_conv_gs1', '../data/cll/y_dev_4d_1p.pkl')
     #combine_results_into_one_csv('../output/logreg_to_conv_grid_search', '../output/agg_results_logreg_to_conv_gs2', '../data/cll/y_dev_4d_1p.pkl', corner_reg_grid=[0.001, 0.050], gate_size_reg_grid=[0.25, 0.5], decimal_points_in_dir_name=3)
-    combine_results_into_one_csv('../output/two_phase_logreg_to_conv_grid_search_gate_size=', '../output/agg_results_two_phase', '../data/cll/y_dev_4d_1p.pkl', corner_reg_grid=[0.00], gate_size_reg_grid= [0., 0.25, 0.5, 0.75, 1., 1.25, 1.5, 1.75, 2.])
-    
+    #combine_results_into_one_csv('../output/two_phase_logreg_to_conv_grid_search_gate_size=', '../output/agg_results_two_phase', '../data/cll/y_dev_4d_1p.pkl', corner_reg_grid=[0.00], gate_size_reg_grid= [0., 0.25, 0.5, 0.75, 1., 1.25, 1.5, 1.75, 2.])
+    path_to_hparams = '../configs/testing_overlaps.yaml'
+    #make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hparams)
+    write_ranked_features_model_dafi(path_to_hparams)
+
     
 
     #dataname = 'cll_4d_1p'

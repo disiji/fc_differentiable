@@ -47,7 +47,7 @@ class CellOverlaps:
                 )
             )
             assert(in_m1_leaf_not_m2 + in_m2_leaf_not_m1 + 2 * num_overlap == model1_leaf_data.shape[0] + model2_leaf_data.shape[0])
-        return overlap_diagnostics
+        return np.array(overlap_diagnostics)
     
     def compute_overlaps_single_data_array(self, data1, data2):
         ids1 = data1[:, -1]

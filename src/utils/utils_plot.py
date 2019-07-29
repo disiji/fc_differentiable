@@ -7,9 +7,11 @@ matplotlib.use('Agg')
 matplotlib.rcParams['font.size'] = 10
 matplotlib.rcParams['font.family'] = 'serif'
 
+from matplotlib.transforms import Bbox as Bbox
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+#from train import run_train_only_logistic_regression
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
@@ -18,8 +20,11 @@ import utils.utils_load_data as dh
 from utils.DataAndGatesPlotter import DataAndGatesPlotter
 #from main_1p_full import default_hparams
 from  utils.input import Cll8d1pInput
+from utils.ParameterParser import ParameterParser
 from utils.bayes_gate import ModelTree
 from copy import deepcopy
+from utils.CellOverlaps import CellOverlaps
+import time
 
 
 default_hparams = {
@@ -776,18 +781,22 @@ def plot_pos_and_neg_gate_motion(models_per_iteration, model_dafi, data, hparams
     )
 
 def parse_hparams(path_to_hparams):
-    hparams = default_hparams
-    with open(path_to_hparams, "r") as f_in:
-        yaml_params = yaml.safe_load(f_in)
-    hparams.update(yaml_params)
-    hparams['init_method'] = "dafi_init" if hparams['dafi_init'] else "random_init"
-    if hparams['train_alternate']:
-        hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
-                hparams['n_mini_batch_update_gates'] - 1)
-    else:
-        hparams['n_epoch_dafi'] = hparams['n_epoch']
+    hparams = ParameterParser(path_to_hparams).parse_params()
 
-    print(hparams)
+
+
+   # hparams = default_hparams
+   # with open(path_to_hparams, "r") as f_in:
+   #     yaml_params = yaml.safe_load(f_in)
+   # hparams.update(yaml_params)
+   # hparams['init_method'] = "dafi_init" if hparams['dafi_init'] else "random_init"
+   # if hparams['train_alternate']:
+   #     hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
+   #             hparams['n_mini_batch_update_gates'] - 1)
+   # else:
+   #     hparams['n_epoch_dafi'] = hparams['n_epoch']
+
+   # print(hparams)
     return hparams
 
 
@@ -848,6 +857,181 @@ def load_output(path_to_hparams):
         print('init model is: ', output['models_per_iteration'][0])
         #call split on input here if theres a bug
         return output
+
+def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None, device_data=0):
+    model = output['models_per_iteration'][iteration]
+    hparams = output['hparams']
+    cll_1p_full_input = output['cll_1p_full_input']
+    dafi_tree = output['dafi_tree']
+
+    if torch.cuda.is_available():
+        model.to(device=device_data)
+    data_x_tr_pos = [
+            x for idx, x in enumerate(cll_1p_full_input.x_train )
+            if cll_1p_full_input.y_train[idx] == 1.
+    ]
+    data_x_tr_neg = [
+            x for idx, x in enumerate(cll_1p_full_input.x_train )
+            if cll_1p_full_input.y_train[idx] == 0.
+    ]
+
+    data_for_overlaps = [
+                            x.cpu().detach().numpy()
+                            for x in cll_1p_full_input.x_train
+                        ]
+                        
+
+    data_pos_for_plot = np.concatenate(
+                            [
+                                x.cpu().detach().numpy()
+                                for x in data_x_tr_pos
+                            ]
+                        )
+    data_neg_for_plot = np.concatenate(
+                            [
+                                x.cpu().detach().numpy()
+                                for x in data_x_tr_neg
+                            ]
+                        )
+
+
+    shuffled_idxs_pos = np.random.permutation(
+            int(data_pos_for_plot.shape[0])
+    )
+    data_pos_for_plot = data_pos_for_plot[shuffled_idxs_pos[0:10000]] 
+
+
+    shuffled_idxs_neg = np.random.permutation(
+            int(data_neg_for_plot.shape[0])
+    )
+    data_neg_for_plot = data_neg_for_plot[shuffled_idxs_neg[0:10000]]
+
+#    detached_data_x_tr_pos = np.concatenate(
+#                            [
+#                                x.cpu().detach().numpy() 
+#                                for idx, x in enumerate(cll_1p_full_input.x_train)
+#                                if cll_1p_full_input.y_train[idx] == 1.
+#                            ]                        
+#                        )
+#
+#    detached_data_x_tr_neg = np.concatenate(
+#                            [
+#                                x.cpu().detach().numpy() 
+#                                for idx, x in enumerate(cll_1p_full_input.x_train)
+#                                if cll_1p_full_input.y_train[idx] == 0.
+#                            ]                        
+#                        )
+
+    gate_names = ['CD45-SSC-H', 'SSC-A, FSC-A', 'CD19-CD5', 'CD79b-CD10']
+    fig, axes = plt.subplots(5, 2, figsize=(4, 8), sharex=True, sharey=True)
+
+    model_output_pos = model(data_x_tr_pos)
+    features_mean_pos = np.mean(model_output_pos['leaf_probs'].detach().cpu().numpy())
+    model_output_neg = model(data_x_tr_neg)
+    features_mean_neg = np.mean(model_output_neg['leaf_probs'].detach().cpu().numpy())
+    
+    run_train_only_logistic_regression(
+            model, cll_1p_full_input.x_train,
+            cll_1p_full_input.y_train, hparams['learning_rate_classifier'],
+            verbose=False
+    )
+    model_output = model(cll_1p_full_input.x_train, cll_1p_full_input.y_train)
+
+    y_true = cll_1p_full_input.y_train
+    y_pred = model_output['y_pred'].detach().cpu().numpy()
+    print('y_pred', np.round(y_pred))
+    print('y_true', y_true)
+    acc = (sum(np.round(np.array(y_pred)) == y_true.cpu().numpy()) * 1.0 / y_true.shape[0])
+    cell_overlaps = CellOverlaps(model, dafi_tree, data_for_overlaps) #cll_1p_full_input.y_train.detach().cpu().numpy())
+    overlaps = cell_overlaps.compute_overlap_diagnostics()
+#    with open('../output/%s/leaf_overlap_diagnostics.csv' %hparams['experiment_name'], 'r') as f:
+#        all_results = f.readlines()
+#        # only want overlaps from last run
+#        results_last_run = all_results[len(all_results) - 35:]
+#        results = []
+#        for row in results_last_run:
+#            row_result = []
+#            for s, string in enumerate(row.split(',')):
+#                #print(string, 'hello')
+#                if s == len(row.split(',')) - 1:
+#                    #print(s)
+#                    #print(string[0:len(string) - 1])
+#                    row_result.append(float(string[1:len(string) - 1]))
+#                elif s == 0:
+#                    row_result.append(float(string))
+#                else:
+#                    row_result.append(float(string[1:]))
+#            results.append(row_result)        
+#        overlaps = np.array(results)[-35:]
+
+#    overlaps = np.genfromtxt('../output/%s/leaf_overlap_diagnostics.csv' %hparams['experiment_name'], delimiter=',')[-35:]
+    in_both = overlaps[:, 0]
+    avg_percent_in_both_model = np.mean([0 if overlaps[i, 3] == 0 else in_both[i]/overlaps[i, 3] for i in range(len(overlaps))])
+    avg_percent_in_both_DAFI =  np.mean([0 if overlaps[i, 4] == 0 else in_both[i]/overlaps[i, 4] for i in range(len(overlaps))])
+
+    
+    
+    #in_model_but_not_DAFI_percent = overlaps[:, 1]/
+    #in_DAFI_but_not_model_percent = overlaps[:, 2]
+    diagnostics = [
+        '%.3f' %model_output['log_loss'],
+        '%.3f' %acc,
+        '%.3f' %features_mean_pos,
+        '%.3f' %features_mean_neg,
+        '%.3f' %avg_percent_in_both_model,
+        '%.3f' %avg_percent_in_both_DAFI
+
+    ]
+
+    diagnostics_labels = [
+        'Log-Loss',
+        'Accuracy',
+        'Model Avg Pos Feature',
+        'Model Avg Neg Feature',
+        '% Model Cells in Intersection',
+        '% Dafi Cells in Intersection'
+    ]
+
+    axes[4][0].table(
+            cellText=np.array(diagnostics)[:, np.newaxis],
+        rowLabels=diagnostics_labels,
+        bbox=np.array([1.275, 0., 1., 1.])
+    )
+    axes[4][0].set_axis_off()
+    axes[4][1].set_axis_off()
+    plotter_pos = DataAndGatesPlotter(model, data_pos_for_plot)
+    plotter_neg = DataAndGatesPlotter(model, data_neg_for_plot)
+    plotter_pos.plot_on_axes(axes[:-1, 0], hparams)
+    plotter_neg.plot_on_axes(axes[:-1, 1], hparams)
+    for i in range(axes.shape[0] - 1):
+        axes[i][0].set_ylabel(gate_names[i])
+    axes[0][0].set_title('Positive Gates')
+    axes[0][1].set_title('Negative Gates')
+    #plt.subplots_adjust(bottom=.25, top=.95)
+
+
+    plt.tight_layout()
+
+def run_single_iter_pos_and_neg_gates_plot(path_to_hparams):
+    output = load_output(path_to_hparams)
+    hparams = output['hparams']
+    marker_size = .00005
+    # plot gates for pos and neg on same plot for iterations 0, 
+    # end of log loss training, and the last epoch
+    make_single_iter_pos_and_neg_gates_plot(output, 0, marker_size=marker_size)
+    plt.savefig('../output/%s/pos_and_neg_gates_iter_0.png' %hparams['experiment_name'])
+    plt.clf()
+
+    log_loss_last_epoch = hparams['two_phase_training']['num_only_log_loss_epochs']
+    log_loss_last_epoch_idx = hparams['seven_epochs_for_gate_motion_plot'].index(log_loss_last_epoch)
+    make_single_iter_pos_and_neg_gates_plot(output, log_loss_last_epoch_idx, marker_size=marker_size)
+    plt.savefig('../output/%s/pos_and_neg_gates_iter_%d.png' %(hparams['experiment_name'], log_loss_last_epoch))
+    plt.clf()
+
+    make_single_iter_pos_and_neg_gates_plot(output, len(output['models_per_iteration']) - 1 , marker_size=marker_size)
+    plt.savefig('../output/%s/pos_and_neg_gates_iter_%d.png' %(hparams['experiment_name'], hparams['seven_epochs_for_gate_motion_plot'][len(output['models_per_iteration']) - 1]))
+    plt.clf()
+
 
 
 def run_leaf_gate_plots(path_to_hparams):
@@ -1017,6 +1201,40 @@ def plot_data_and_gates(axes, model, data, hparams):
 
 
  
+def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_thresh=1e-10, verbose=True, log_features=None):
+    start = time.time() 
+    classifier_params = [model.linear.weight, model.linear.bias]
+    optimizer_classifier = torch.optim.Adam(classifier_params, lr=adam_lr)
+    if log_features is None:
+        output = model(x_tensor_list, y, detach_logistic_params=True)
+        log_features = output['leaf_logp']
+    BCEWithLogits = nn.BCEWithLogitsLoss()
+    #these are called log_probs in the forwards function, but
+    #calling them log_features is more consistent with our
+    #previous usages in the paper and code
+    
+    prev_loss = -10 #making sure the loop starts
+    delta = 50
+    iters = 0
+    while delta > conv_thresh:
+        #features are fixed here, the only thing we need is the change in log loss from logistic params
+        #forward pass through entire model is uneccessary!
+        log_loss = BCEWithLogits(model.linear(log_features).squeeze(1), y)
+        optimizer_classifier.zero_grad()
+        log_loss.backward()
+        optimizer_classifier.step()
+        delta = torch.abs(log_loss - prev_loss)
+        prev_loss = log_loss
+        iters += 1
+        if verbose:
+            print(log_loss.item())
+            if iters%100 == 0:
+                print('%.6f ' %(delta), end='')
+                if iters%500 == 0:
+                    print('\n')
+            print('\n')
+            print('time taken %d, with loss %.2f' %(time.time() - start, log_loss.detach().item()))
+    return model
 if __name__ == '__main__':
     with open('../../data/cll/x_dev_4d_1p.pkl', 'rb') as f:
         x_dev_list = pickle.load(f)

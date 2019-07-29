@@ -42,6 +42,8 @@ def make_dev_data_plots():
 
 if __name__ == '__main__':
     #experiment_yaml_file = '../configs/testing_corner_init.yaml'
-    experiment_yaml_file = '../configs/testing_overlaps.yaml'
+    #experiment_yaml_file = '../configs/testing_overlaps.yaml'
+    experiment_yaml_file = '../configs/testing_my_heuristic_init.yaml'
     #run_gate_motion_from_saved_results(experiment_yaml_file)
-    run_leaf_gate_plots(experiment_yaml_file)
+#    run_leaf_gate_plots(experiment_yaml_file)
+    run_single_iter_pos_and_neg_gates_plot(experiment_yaml_file)

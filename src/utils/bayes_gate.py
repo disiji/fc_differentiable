@@ -30,7 +30,20 @@ class Gate(object):
             self.gate_dim2, self.gate_low2, self.gate_upp2 = gate_tuple[1]
             self.gate_dim1 = features2id[self.gate_dim1]
             self.gate_dim2 = features2id[self.gate_dim2]
-
+    def __repr__(self):
+        repr_string = ('ModelNode(\n'
+                       '  dims=({dim1}, {dim2}),\n'
+                       '  gate_dim1=({low1:0.4f}, {high1:0.4f}),\n'
+                       '  gate_dim2=({low2:0.4f}, {high2:0.4f}),\n'
+                       ')\n')
+        return repr_string.format(
+            dim1=self.gate_dim1,
+            dim2=self.gate_dim2,
+            low1=self.gate_low1,
+            high1=self.gate_upp1,
+            low2=self.gate_low2,
+            high2=self.gate_upp2
+        )
 
 class ReferenceTree(object):
     def __init__(self, nested_list, features2id):
@@ -163,80 +176,190 @@ class SquareModelNode(ModelNode):
         self.gate_dim2 = self.reference_tree.gate.gate_dim2
         self.gate_size_default = gate_size_default
         self.is_root = is_root
+
+
         if init_tree == None:
-            self.center1_param = nn.Parameter(
-                    torch.tensor(
-                    self.__log_odds_ratio__(
-                        self.reference_tree.gate.gate_low1 + \
-                        (self.reference_tree.gate.gate_upp1 - self.reference_tree.gate.gate_low1)/2.
-                    ), 
-                    dtype=torch.float32
-                )
-            )
-            self.center2_param = nn.Parameter(
-                    torch.tensor(
-                    self.__log_odds_ratio__(
-                        self.reference_tree.gate.gate_low2 + \
-                        (self.reference_tree.gate.gate_upp2 - self.reference_tree.gate.gate_low2)/2.
-                    ), 
-                    dtype=torch.float32
-                )
-            )
-            diff1 = self.reference_tree.gate.gate_upp1 - self.reference_tree.gate.gate_low1
-            diff2 = self.reference_tree.gate.gate_upp2 - self.reference_tree.gate.gate_low2
-            # really should be an average and then lowering value appropiately
-            self.side_length_param = nn.Parameter(
-                    torch.tensor(
-                    self.__log_odds_ratio__(
-                        (diff1 if diff1 < diff2 else diff2)
-                    ), 
-                    dtype=torch.float32
-                )
-            )
-
+            self.init_gate_params(reference_tree)
         else:
-            self.center1_param = nn.Parameter(
-                    torch.tensor(
-                    self.__log_odds_ratio__(
-                        init_tree.gate.gate_low1 + \
-                        (init_tree.gate.gate_upp1 - init_tree.gate.gate_low1)/2.
-                    ), 
-                    dtype=torch.float32
-                )
-            )
-            self.center2_param = nn.Parameter(
-                    torch.tensor(
-                    self.__log_odds_ratio__(
-                        init_tree.gate.gate_low2 + \
-                        (init_tree.gate.gate_upp2 - init_tree.gate.gate_low2)/2.
-                    ), 
-                    dtype=torch.float32
-                )
-            )
-            diff1 = init_tree.gate.gate_upp1 - init_tree.gate.gate_low1
-            diff2 = init_tree.gate.gate_upp2 - init_tree.gate.gate_low2
-            # really should be an average and then lowering value appropiately
-            self.side_length_param = nn.Parameter(
-                    torch.tensor(
-                    self.__log_odds_ratio__(
-                        (diff1 if diff1 < diff2 else diff2)
-                    ), 
-                    dtype=torch.float32
-                )
-            )
+            self.init_gate_params(init_tree)
 
-        
-        
-        print(
-                'center [%.3f, %.3f], side_length %.3f' 
-                %(self.center1_param.detach().item(), self.center2_param.detach().item(), self.side_length_param.detach().item())
-        ) 
+
+
+
+
+        #if init_tree == None:
+        #    self.center1_param = nn.Parameter(
+        #            torch.tensor(
+        #            self.__log_odds_ratio__(
+        #                self.reference_tree.gate.gate_low1 + \
+        #                (self.reference_tree.gate.gate_upp1 - self.reference_tree.gate.gate_low1)/2.
+        #            ), 
+        #            dtype=torch.float32
+        #        )
+        #    )
+        #    self.center2_param = nn.Parameter(
+        #            torch.tensor(
+        #            self.__log_odds_ratio__(
+        #                self.reference_tree.gate.gate_low2 + \
+        #                (self.reference_tree.gate.gate_upp2 - self.reference_tree.gate.gate_low2)/2.
+        #            ), 
+        #            dtype=torch.float32
+        #        )
+        #    )
+        #    diff1 = self.reference_tree.gate.gate_upp1 - self.reference_tree.gate.gate_low1
+        #    diff2 = self.reference_tree.gate.gate_upp2 - self.reference_tree.gate.gate_low2
+        #    # really should be an average and then lowering value appropiately
+        #    self.side_length_param = nn.Parameter(
+        #            torch.tensor(
+        #            self.__log_odds_ratio__(
+        #                (diff1 if diff1 < diff2 else diff2)
+        #            ), 
+        #            dtype=torch.float32
+        #        )
+        #    )
+
+        #else:
+        #    self.center1_param = nn.Parameter(
+        #            torch.tensor(
+        #            self.__log_odds_ratio__(
+        #                init_tree.gate.gate_low1 + \
+        #                (init_tree.gate.gate_upp1 - init_tree.gate.gate_low1)/2.
+        #            ), 
+        #            dtype=torch.float32
+        #        )
+        #    )
+        #    self.center2_param = nn.Parameter(
+        #            torch.tensor(
+        #            self.__log_odds_ratio__(
+        #                init_tree.gate.gate_low2 + \
+        #                (init_tree.gate.gate_upp2 - init_tree.gate.gate_low2)/2.
+        #            ), 
+        #            dtype=torch.float32
+        #        )
+        #    )
+        #    diff1 = init_tree.gate.gate_upp1 - init_tree.gate.gate_low1
+        #    diff2 = init_tree.gate.gate_upp2 - init_tree.gate.gate_low2
+        #    # really should be an average and then lowering value appropiately
+        #    self.side_length_param = nn.Parameter(
+        #            torch.tensor(
+        #            self.__log_odds_ratio__(
+        #                (diff1 if diff1 < diff2 else diff2)
+        #            ), 
+        #            dtype=torch.float32
+        #        )
+        #    )
+
+        #
+        #
+        #print(
+        #        'center [%.3f, %.3f], side_length %.3f' 
+        #        %(self.center1_param.detach().item(), self.center2_param.detach().item(), self.side_length_param.detach().item())
+        #) 
 
 #        self.gate_upp1_param = self.__log_odds_ratio__(nn.Parameter(self.center1 + self.side_length/2.))
 #        self.gate_low1_param = self.__log_odds_ratio__(nn.Parameter(self.center1 - self.side_length/2.))
 #        self.gate_upp2_param = self.__log_odds_ratio__(nn.Parameter(self.center2 + self.side_length/2.))
 #        self.gate_low2_param = self.__log_odds_ratio__(nn.Parameter(self.center2 - self.side_length/2.))
+    @staticmethod
+    def load_tree_into_gate(tree):
+        low1 = tree.gate.gate_low1
+        low2 = tree.gate.gate_low2
+        upp1 = tree.gate.gate_upp1
+        upp2 = tree.gate.gate_upp2
 
+        gate = namedtuple('gate', ['low1', 'upp1', 'low2', 'upp2'])
+        gate.low1 = low1
+        gate.low2 = low2
+        gate.upp1 = upp1
+        gate.upp2 = upp2
+        return gate
+
+    def get_expanded_beyond_range_square_gate(self, tree):
+        rectangle_gate = SquareModelNode.load_tree_into_gate(tree)
+        x_len = rectangle_gate.upp1 - rectangle_gate.low1
+        y_len = rectangle_gate.upp2 - rectangle_gate.low2
+        x_is_bigger = False
+        if x_len > y_len:
+            x_is_bigger = True
+
+        square_side_len = x_len if x_is_bigger else y_len
+
+        square_gate = namedtuple('gate', ['low1', 'upp1', 'low2', 'upp2'])
+        if x_is_bigger:
+            # check which side we are in contact with
+            if rectangle_gate.low2 == 0.0:
+                # contact is with bottom
+                square_gate.upp2 = rectangle_gate.upp2
+                square_gate.low2 = rectangle_gate.upp2 - square_side_len
+            else:
+                # contact is with the top
+                square_gate.low2 = rectangle_gate.low2
+                square_gate.upp2 = rectangle_gate.low2 + square_side_len
+                
+            square_gate.upp1 = rectangle_gate.upp1
+            square_gate.low1 = rectangle_gate.low1
+        else:
+            if rectangle_gate.low1 == 0.0:
+                # contact is with left side
+                square_gate.upp1 = rectangle_gate.upp1
+                square_gate.low1 = rectangle_gate.upp1 - square_side_len
+            else:
+                # contact is with right side
+                square_gate.low1 = rectangle_gate.low1
+                square_gate.upp1 = rectangle_gate.low1 + square_side_len
+
+            square_gate.low2 = rectangle_gate.low2
+            square_gate.upp2 = rectangle_gate.upp2
+                
+#        square_gate.upp1 = rectangle_gate.upp1
+#        square_gate.low1 = rectangle_gate.upp1 - square_side_len
+#        square_gate.upp2 = rectangle_gate.upp2
+#        square_gate.low2 = rectangle_gate.upp2 - square_side_len
+        print(square_gate.low1, square_gate.upp1, square_gate.low2, square_gate.upp2)
+        print(rectangle_gate.low1, rectangle_gate.upp1, rectangle_gate.low2, rectangle_gate.upp2)
+
+        return square_gate
+
+    def init_gate_params(self, tree):
+        # first make the gate into a square
+        # note that the gate here will have negative values
+        # reminder: the tree gates are normalized to 0,1 at this point
+        square_gate = self.get_expanded_beyond_range_square_gate(tree)
+
+
+        self.center1_param = nn.Parameter(
+                torch.tensor(
+                self.__log_odds_ratio__(
+                    square_gate.low1 + \
+                    (square_gate.upp1 - square_gate.low1)/2.
+                ), 
+                dtype=torch.float32
+            )
+        )
+        self.center2_param = nn.Parameter(
+                torch.tensor(
+                self.__log_odds_ratio__(
+                    square_gate.low2 + \
+                    (square_gate.upp2 - square_gate.low2)/2.
+                ), 
+                dtype=torch.float32
+            )
+        )
+
+        s1 = square_gate.upp1 - square_gate.low1
+        s2 = square_gate.upp2 - square_gate.low2
+        # should be a square after expanding into a square
+        assert(np.round(s1 * 10**4)/10**4 == np.round(s2 * 10**4)/10**4)
+
+        self.side_length_param = nn.Parameter(
+                torch.tensor(
+                self.__log_odds_ratio__(s1), 
+                dtype=torch.float32
+                )
+        )
+
+        #print(F.sigmoid(self.center1_param), F.sigmoid(self.center2_param))
+        #print(F.sigmoid(self.side_length_param))
 
     def forward(self, x):
         """
@@ -441,6 +564,7 @@ class ModelTree(nn.Module):
     @staticmethod
     def filter_data_at_single_node(data, node):
         gate = ModelTree.get_gate(node)
+        #print(node)
         filtered_data = dh.filter_rectangle(
                 data, node.gate_dim1, 
                 node.gate_dim2, gate.low1, gate.upp1, 
@@ -490,7 +614,13 @@ class ModelTree(nn.Module):
                 node_stack.append(child)
 
         return outputs
-    
+    '''
+    returns a list of pairs of ids for each gate in depth-first order
+    '''
+    def get_flat_ids(self):
+        def get_ids(node):
+            return [node.gate_dim1, node.gate_dim2]
+        return self.apply_function_depth_first(get_ids)
     '''
     returns a depth first ordering of the
     model gates as a list of name_tuples 

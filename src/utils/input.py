@@ -6,7 +6,8 @@ from sklearn.model_selection import train_test_split
 
 import utils.utils_load_data as dh
 from utils.bayes_gate import ReferenceTree
-
+from  copy import deepcopy
+from utils.HeuristicInitializer import HeuristicInitializer
 
 class CLLInputBase:
     def __init__(self):
@@ -186,13 +187,14 @@ class Cll4d1pInput(CLLInputBase):
                 ]
             ]
         return self.init_nested_list
+   
 
     def _normalize_(self):
         self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
         print(self.feature2id, offset, scale, self.reference_nested_list)
         self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
                                                               self.feature2id)
-        if not (self.hparams['init_type'] == 'random_corner' or self.hparams['init_type'] == 'same_corners_as_DAFI'):
+        if not (self.hparams['init_type'] == 'random_corner' or self.hparams['init_type'] == 'same_corners_as_DAFI' or self.hparams['init_type'] == 'padhraics_init' or self.hparams['init_type'] == 'heuristic_init'):
             self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
 
     def _construct_(self):
@@ -244,9 +246,15 @@ class Cll8d1pInput(Cll4d1pInput):
         self.feature2id = dict((self.features[i], i) for i in range(len(self.features)))
 
         self._load_data_(hparams)
-        self._get_reference_nested_list_()
-        self._get_init_nested_list_(hparams)
-        self._normalize_()
+        self.unnormalized_x_list_of_numpy = deepcopy(self.x_list)
+        self.y_numpy = deepcopy(self.y_list)
+        self.reference_nested_list = self._get_reference_nested_list_()
+        if hparams['init_type'] == 'heuristic_init':
+            self._normalize_()
+            self._get_init_nested_list_(hparams)
+        else:
+            self._get_init_nested_list_(hparams)
+            self._normalize_()
         self._construct_()
         self.split()
 
@@ -284,7 +292,7 @@ class Cll8d1pInput(Cll4d1pInput):
             self.x_list, self.y_list = x_8d, y
 
     def _get_reference_nested_list_(self):
-        self.reference_nested_list = \
+        reference_nested_list = \
             [
                 [[u'SSC-H', 102., 921.], [u'CD45', 2048., 3891]],
                 [
@@ -304,7 +312,11 @@ class Cll8d1pInput(Cll4d1pInput):
                     ]
                 ]
             ]
-
+        return reference_nested_list
+    def get_unnormalized_reference_tree(self):
+        unnormalized_reference_list = self._get_reference_nested_list_()
+        reference_tree = ReferenceTree(unnormalized_reference_list, self.feature2id)
+        return reference_tree
 
     def _get_init_nested_list_(self, hparams):
         if hparams['init_type'] == 'random':
@@ -317,8 +329,58 @@ class Cll8d1pInput(Cll4d1pInput):
             self.init_nested_list = self._get_random_corner_init(size_default=hparams['corner_init_deterministic_size'])
         elif hparams['init_type'] == 'same_corners_as_DAFI':
             self.init_nested_list = self._get_same_corners_as_DAFI_init()
+        elif hparams['init_type'] == 'padhraics_init':
+            self.init_nested_list = self._get_padhraics_init()
+        elif hparams['init_type'] == 'heuristic_init':
+            
+            self.init_nested_list = self._get_heuristic_init()
         else:
             self.init_nested_list = self._get_middle_plots_init_nested_list_()
+
+
+    def _get_heuristic_init(self):
+        heuristic_initializer = HeuristicInitializer(
+            self.hparams['node_type'],
+            self.get_gate_data_ids(),
+            np.concatenate(self.get_pos_tr_data()),
+            np.concatenate(self.get_neg_tr_data()),
+            num_gridcells_per_axis = self.hparams['heuristic_init']['num_gridcells_per_axis']
+        )
+        flat_gates = heuristic_initializer.get_heuristic_gates() 
+        return self._convert_flattened_list_to_nested_(flat_gates)
+                                
+    def get_gate_data_ids(self):
+        gate_data_ids = \
+            [
+                [self.feature2id['SSC-H'], self.feature2id['CD45']], 
+                [self.feature2id['FSC-A'], self.feature2id['SSC-A']], 
+                [self.feature2id['CD5'], self.feature2id['CD19']], 
+                [self.feature2id['CD10'], self.feature2id['CD79b']], 
+            ]
+
+        return gate_data_ids 
+
+    # I would add an optional argument for return type here:
+    # either numpy or tensor
+    # also right now uses all data so these should only be
+    # called when no testing data is used in the input object
+    def get_pos_tr_data(self):
+        pos_tr_data = \
+            [
+                x for idx, x in enumerate(self.x_list)
+                if self.y_list[idx] == 1
+            ]
+        return pos_tr_data
+
+    def get_neg_tr_data(self):
+        neg_tr_data = \
+            [
+                x for idx, x in enumerate(self.x_list)
+                if self.y_list[idx] == 0
+            ]
+        return neg_tr_data
+
+
 
     def _get_corner_gate(self, corner, size):
         gate = [
@@ -328,6 +390,28 @@ class Cll8d1pInput(Cll4d1pInput):
             corner[1] + size if corner[1] == 0 else 1.
         ]
         return gate
+    def _get_padhraics_init(self):
+        padhraics_init = \
+            [
+                [[u'SSC-H', 0., 0.3], [u'CD45', 0., .9]],
+                [
+                    [
+                        [[u'FSC-A', .3, 1.], [u'SSC-A', 0., .3]],
+                        [
+                            [
+                                [[u'CD5', 0., .9], [u'CD19', .5, 1.]],
+                                [
+                                    [
+                                        [[u'CD10', 0, .4], [u'CD79b', 0, .5]],
+                                        []
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        return padhraics_init
 
     def _get_same_corners_as_DAFI_init(self):
 
@@ -580,8 +664,8 @@ class Cll4d2pInput(CLLInputBase):
 
     def _normalize_(self):
         self.x_list, offset, scale = dh.normalize_x_list_multiple_panels(self.x_list)
-        print("offset:", offset)
-        print("scale:", scale)
+        self.offset = offset
+        self.scale = scale
         self.reference_nested_list = [dh.normalize_nested_tree(self.reference_nested_list[i], offset[i], scale[i],
                                                                self.feature2id[i]) for i in range(self.n_panels)]
         self.init_nested_list = [dh.normalize_nested_tree(self.init_nested_list[i], offset[i], scale[i],
@@ -593,6 +677,7 @@ class Cll4d2pInput(CLLInputBase):
         self.init_tree = [ReferenceTree(self.init_nested_list[i], self.feature2id[i]) for i in range(self.n_panels)]
         if self.hparams['dafi_init']:
             self.init_tree = [None] * self.n_panels
+
 
     def split(self, random_state=123):
         print(np.array(self.x_list).shape)
