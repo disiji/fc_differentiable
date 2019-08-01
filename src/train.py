@@ -89,23 +89,26 @@ def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_th
             print('time taken %d, with loss %.2f' %(time.time() - start, log_loss.detach().item()))
     return model
 
-def init_model_trackers_and_optimizers(hparams, input, model_checkpoint):
-    model = ModelTree(input.reference_tree,
-                           logistic_k=hparams['logistic_k'],
-                           regularisation_penalty=hparams['regularization_penalty'],
-                           negative_box_penalty=hparams['negative_box_penalty'],
-                           positive_box_penalty=hparams['positive_box_penalty'],
-                           corner_penalty=hparams['corner_penalty'],
-                           gate_size_penalty=hparams['gate_size_penalty'],
-                           feature_diff_penalty=hparams['feature_diff_penalty'],
-                           init_tree=input.init_tree,
-                           loss_type=hparams['loss_type'],
-                           gate_size_default=hparams['gate_size_default'],
-                           neg_proportion_default=hparams['neg_proportion_default'],
-                           node_type=hparams['node_type']
-    )
-    if hparams['two_phase_training'] == False:
-        raise ValueError('Only call run_train_model_two_phase with two phase setup in yaml!')
+def init_model_trackers_and_optimizers(hparams, input, model_checkpoint, return_new_model=False, model=None):
+    if return_new_model:
+        model = ModelTree(input.reference_tree,
+                               logistic_k=hparams['logistic_k'],
+                               regularisation_penalty=hparams['regularization_penalty'],
+                               negative_box_penalty=hparams['negative_box_penalty'],
+                               positive_box_penalty=hparams['positive_box_penalty'],
+                               corner_penalty=hparams['corner_penalty'],
+                               gate_size_penalty=hparams['gate_size_penalty'],
+                               feature_diff_penalty=hparams['feature_diff_penalty'],
+                               init_tree=input.init_tree,
+                               loss_type=hparams['loss_type'],
+                               gate_size_default=hparams['gate_size_default'],
+                               neg_proportion_default=hparams['neg_proportion_default'],
+                               node_type=hparams['node_type']
+        )
+    else:
+        model = model
+#    if hparams['two_phase_training'] == False:
+#        raise ValueError('Only call run_train_model_two_phase with two phase setup in yaml!')
     classifier_params = [model.linear.weight, model.linear.bias]
     gates_params = [p for p in model.parameters() if not any(p is d_ for d_ in classifier_params)]
 
@@ -138,7 +141,10 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint):
         #optimizer_classifier.cuda()
         #optimizer_gates.cuda()
         #model_checkpoint_dict.cuda()
-    return model, train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict
+    if return_new_model:
+        return model, train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict
+    else:
+        return train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict
 
 
 def free_memory(variables_to_free):
@@ -155,6 +161,78 @@ def gate_size_large_enough(model, min_gate_size):
         elif (gate.upp2 - gate.low2) < min_gate_size:
             return False
     return True
+
+def run_train_dafi_logreg_to_conv(dafi_model, hparams, input):
+    eval_tracker = Tracker()
+    train_tracker = Tracker()
+    train_tracker.model_init = deepcopy(dafi_model)
+    eval_tracker.model_init = deepcopy(dafi_model)
+    train_tracker.update(dafi_model, dafi_model(input.x_train, input.y_train), input.y_train, 0, 1)
+    eval_tracker.update(dafi_model, dafi_model(input.x_eval, input.y_eval), input.y_eval, 0, 1)
+    output_detached = dafi_model(input.x_train, input.y_train, detach_logistic_params=True, use_hard_proportions=True)
+    #log_hard_proportions = np.log(dafi_model.get_hard_proportions(input.x_train))
+    run_train_only_logistic_regression(
+            dafi_model, 
+            input.x_train,
+            input.y_train, 
+            hparams['learning_rate_classifier'],
+            verbose=False,
+            log_features = output_detached['leaf_logp']
+    )
+    train_tracker.update(dafi_model, dafi_model(input.x_train, input.y_train), input.y_train, 0, 1)
+    eval_tracker.update(dafi_model, dafi_model(input.x_eval, input.y_eval), input.y_eval, 0, 1)
+    return dafi_model, train_tracker, eval_tracker
+
+def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=False):
+    start = time.time()
+
+    train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict = init_model_trackers_and_optimizers(hparams, input, model_checkpoint, return_new_model=False, model=model)
+
+    for epoch in range(hparams['n_epoch']):
+        x_train = input.x_train
+        y_train = input.y_train
+
+        optimizer_gates.zero_grad()
+        optimizer_classifier.zero_grad()
+        output_detached = model(x_train, y_train, detach_logistic_params=True)
+        output = model(x_train, y_train)
+
+        loss = output['loss']
+        loss.backward()
+
+        run_train_only_logistic_regression(model, x_train, y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
+        optimizer_gates.step()
+
+        # print every n_batch_print mini-batches
+        if epoch % hparams['n_epoch_eval'] == 0:
+            # stats on train
+            train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, 1)
+            if not(hparams['test_size'] == 0.):
+                eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, 1)
+
+            loss_tuple = (epoch, 1, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1], 'prop_diff_reg:', train_tracker.feature_diff_loss[-1])
+            print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
+        
+
+
+        epoch_list = hparams['seven_epochs_for_gate_motion_plot']
+        if model_checkpoint:
+            if epoch+1 in epoch_list:#[100, 200, 300, 400, 500, 600]:
+                model_checkpoint_dict[epoch+1] = deepcopy(model)
+
+    # train the logistic regressor one more time with hard weights?
+    # update the logistic weights to the current
+    # features
+    output_detached = model(input.x_train, input.y_train, detach_logistic_params=True)
+    run_train_only_logistic_regression(model, input.x_train, input.y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
+    # update trackers one more time 
+    train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, 1)
+    if not(hparams['test_size'] == 0.):
+        eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, 1)
+
+    print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))
+
+    return model, train_tracker, eval_tracker, time.time() - start, model_checkpoint_dict
 
 def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stopping_threshold=1e-6):
     entire_start = time.time()
@@ -348,6 +426,10 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
 
             loss = output['loss']
             loss.backward()
+
+#            print(model.root.center1_param.grad)
+#            print(model.root.center2_param.grad)
+#            print(model.root.side_length_param.grad)
             if hparams['train_alternate'] == True:
                 if hparams['run_logistic_to_convergence'] == True:
                     #kinda odd that this function uses its own optimizer in this case, may want to scrutinize this later
@@ -371,20 +453,19 @@ def run_train_model_two_phase(hparams, input, model_checkpoint=False, early_stop
                 eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, i)
 
             # compute
-            if hparams['test_size'] == 0.:
-                loss_tuple = (epoch, i, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1], 'prop_diff_reg:', train_tracker.feature_diff_loss[-1])
-                print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
-            else:
-                print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (
-                    epoch, i, train_tracker.loss[-1], eval_tracker.loss[-1]))
-                print('[Epoch %d, batch %d] training, eval ref_reg_loss: %.3f, %.3f' % (
-                    epoch, i, train_tracker.ref_reg_loss[-1], eval_tracker.ref_reg_loss[-1]))
-                print('[Epoch %d, batch %d] training, eval size_reg_loss: %.3f, %.3f' % (
-                    epoch, i, train_tracker.size_reg_loss[-1], eval_tracker.size_reg_loss[-1]))
-                print('[Epoch %d, batch %d] training, eval corner_reg_loss: %.3f, %.3f' % (
-                    epoch, i, train_tracker.corner_reg_loss[-1], eval_tracker.corner_reg_loss[-1]))
-                print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
-                    epoch, i, train_tracker.acc[-1], eval_tracker.acc[-1]))
+            loss_tuple = (epoch, i, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1], 'prop_diff_reg:', train_tracker.feature_diff_loss[-1])
+            print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
+            #else:
+            #    print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (
+            #        epoch, i, train_tracker.loss[-1], eval_tracker.loss[-1]))
+            #    print('[Epoch %d, batch %d] training, eval ref_reg_loss: %.3f, %.3f' % (
+            #        epoch, i, train_tracker.ref_reg_loss[-1], eval_tracker.ref_reg_loss[-1]))
+            #    print('[Epoch %d, batch %d] training, eval size_reg_loss: %.3f, %.3f' % (
+            #        epoch, i, train_tracker.size_reg_loss[-1], eval_tracker.size_reg_loss[-1]))
+            #    print('[Epoch %d, batch %d] training, eval corner_reg_loss: %.3f, %.3f' % (
+            #        epoch, i, train_tracker.corner_reg_loss[-1], eval_tracker.corner_reg_loss[-1]))
+            #    print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
+            #        epoch, i, train_tracker.acc[-1], eval_tracker.acc[-1]))
 
         # epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]
         # epoch_list = [0, 100, 200, 300, 500, 700, 1000]
@@ -931,8 +1012,13 @@ def run_write_prediction(model_tree, dafi_tree, input, hparams):
         file.write('\n')
 
     feats = model_tree(input.x, input.y)['leaf_logp'].cpu().detach().numpy()
+    sorted_idxs = np.argsort(feats)
+    feats = feats[sorted_idxs]
     plt.clf()
-    plt.scatter(np.arange(feats.shape[0]), feats)
+    pos_feats = np.array([[feat, sorted_idxs[i]] for i, feat in enumerate(feats) if input.y[i] == 1])
+    neg_feats = np.array([[feat, sorted_idxs[i]] for i, feat in enumerate(feats) if input.y[i] == 0])
+    plt.scatter(pos_feats[:, 1], pos_feats[:, 0], color='r')
+    plt.scatter(neg_feats[:, 1], neg_feats[:, 0], color='b')
     plt.title('features for each sample')
     plt.savefig('../output/%s/features_scatter_for_most_recent_run.png' %hparams['experiment_name'])
 

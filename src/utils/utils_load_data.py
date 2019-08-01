@@ -72,7 +72,7 @@ def filter_slope(data, dim1, dim2, x1, x2, y1, y2):
     return data[idx]
 
 
-def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2):
+def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2, return_idx=False):
     """
     return subset of datapoints in data that fall into the rectangle formed by (x1, y1),(x2, y2),(x1, y2) and (x2, y1)
     :param data: np.array (n_datapoints, n_features)
@@ -91,6 +91,11 @@ def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2):
     if x1 > x2 or y1 > y2:
         raise ValueError("x2 should be greater than x1, y2 should be greater than y1.")
     idx = (data[:, dim1] > x1) & (data[:, dim1] < x2) & (data[:, dim2] > y1) & (data[:, dim2] < y2)
+    #idx = (data[:, dim1] >= x1) & (data[:, dim1] <= x2) & (data[:, dim2] >= y1) & (data[:, dim2] <= y2)
+
+    if return_idx:
+        return idx
+
     return data[idx]
 
 
@@ -232,7 +237,7 @@ def normalize_x_list(x_list, offset=None, scale=None):
     :return:
     """
     n_features = x_list[0].shape[1]
-    if offset == None or scale == None:
+    if offset is None or scale is None:
         x_min = np.min(np.array([x.min(axis=0) if x.shape[0] > 0
                                  else [np.nan] * n_features for x in x_list]), axis=0)
         x_max = np.max(np.array([x.max(axis=0) if x.shape[0] > 0

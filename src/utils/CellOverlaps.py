@@ -29,8 +29,9 @@ class CellOverlaps:
     def compute_overlap_diagnostics(self):
         overlap_diagnostics = []
         for data in self.data_list_with_ids:
-            model1_leaf_data = self.model1.filter_data_to_leaf(data)
-            model2_leaf_data = self.model2.filter_data_to_leaf(data)
+            # leaf data here means inside all gates including leaf gate
+            model1_leaf_data = self.model1.get_data_inside_all_gates(data)
+            model2_leaf_data = self.model2.get_data_inside_all_gates(data)
             num_overlap = self.compute_overlaps_single_data_array(
                 model1_leaf_data,
                 model2_leaf_data,

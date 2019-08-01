@@ -858,7 +858,7 @@ def load_output(path_to_hparams):
         #call split on input here if theres a bug
         return output
 
-def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None, device_data=0):
+def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None, device_data=1):
     model = output['models_per_iteration'][iteration]
     hparams = output['hparams']
     cll_1p_full_input = output['cll_1p_full_input']
@@ -939,8 +939,8 @@ def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None,
 
     y_true = cll_1p_full_input.y_train
     y_pred = model_output['y_pred'].detach().cpu().numpy()
-    print('y_pred', np.round(y_pred))
-    print('y_true', y_true)
+#    print('y_pred', np.round(y_pred))
+#    print('y_true', y_true)
     acc = (sum(np.round(np.array(y_pred)) == y_true.cpu().numpy()) * 1.0 / y_true.shape[0])
     cell_overlaps = CellOverlaps(model, dafi_tree, data_for_overlaps) #cll_1p_full_input.y_train.detach().cpu().numpy())
     overlaps = cell_overlaps.compute_overlap_diagnostics()
@@ -988,8 +988,8 @@ def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None,
         'Accuracy',
         'Model Avg Pos Feature',
         'Model Avg Neg Feature',
-        '% Model Cells in Intersection',
-        '% Dafi Cells in Intersection'
+        '% Model Leaf Cells in Both',
+        '% Dafi Leaf Cells in Both'
     ]
 
     axes[4][0].table(

@@ -59,8 +59,8 @@ class ReferenceTree(object):
         for idx in range(self.n_children):
             self.children[idx] = ReferenceTree(nested_list[1][idx], features2id)
             self.n_leafs += self.children[idx].n_leafs
-        print("n_children and n_leafs in reference tree: (%d, %d), and isLeaf = %r" % (
-            self.n_children, self.n_leafs, self.isLeaf))
+#        print("n_children and n_leafs in reference tree: (%d, %d), and isLeaf = %r" % (
+#            self.n_children, self.n_leafs, self.isLeaf))
 
 
         
@@ -315,8 +315,10 @@ class SquareModelNode(ModelNode):
 #        square_gate.low1 = rectangle_gate.upp1 - square_side_len
 #        square_gate.upp2 = rectangle_gate.upp2
 #        square_gate.low2 = rectangle_gate.upp2 - square_side_len
-        print(square_gate.low1, square_gate.upp1, square_gate.low2, square_gate.upp2)
-        print(rectangle_gate.low1, rectangle_gate.upp1, rectangle_gate.low2, rectangle_gate.upp2)
+#        print('Node at dims: ', self.gate_dim1, self.gate_dim2)
+#        print([square_gate.low1, square_gate.upp1, square_gate.low2, square_gate.upp2])
+        
+        #print([rectangle_gate.low1, rectangle_gate.upp1, rectangle_gate.low2, rectangle_gate.upp2])
 
         return square_gate
 
@@ -372,7 +374,16 @@ class SquareModelNode(ModelNode):
         gate_low1 = F.sigmoid(self.center1_param) - F.sigmoid(self.side_length_param)/2.
         gate_upp2 = F.sigmoid(self.center2_param) +  F.sigmoid(self.side_length_param)/2.
         gate_low2 = F.sigmoid(self.center2_param) -  F.sigmoid(self.side_length_param)/2.
-
+        #print(self.gate_dim1, self.gate_dim2)
+        #print(self.center1_param, self.side_length_param)
+        #print(self.center1_param.grad, self.side_length_param.grad, 'huh betta not be none')
+        #print('upp1', gate_upp1)
+        #print('low1', gate_low1)
+        #print('low2', gate_low2)
+        #print('upp2', gate_upp2)
+        #if not self.center1_param.grad is None:
+        #    if np.isnan(self.center1_param.grad.detach().cpu().numpy()):
+        #        raise RuntimeError('nannanananan')
         
         
 #        gate_low1 = F.sigmoid(gate_low1_param)
@@ -576,6 +587,9 @@ class ModelTree(nn.Module):
         # the second to last entry is the leaf node's data, while the last is the data filtered by the leaf node's gate
         return self.filter_data(data)[-2]
 
+    def get_data_inside_all_gates(self, data):
+        return self.filter_data(data)[-1]
+
     def filter_data(self, data):
         # lists easily function as stacks in python
         node_stack = [self.root]
@@ -722,7 +736,22 @@ class ModelTree(nn.Module):
         self.children_dict.update({str(id(node)): child_list})
         return node
 
-    def forward(self, x, y=None, detach_logistic_params=False):
+    def make_gates_hard(self):
+        self.logistic_k = 1e4
+
+    def get_hard_proportions(self, data):
+        inside_all_gates = [self.get_data_inside_all_gates(d.cpu().detach().numpy()) for d in data]
+        proportions = np.array(
+            [        
+                x.shape[0]/data[idx].shape[0]
+                for idx, x in enumerate(inside_all_gates)
+            ]
+        )
+        return proportions
+
+
+
+    def forward(self, x, y=None, detach_logistic_params=False, use_hard_proportions=False):
         """
 
         :param x: a list of tensors
@@ -743,6 +772,7 @@ class ModelTree(nn.Module):
                   'log_loss': None,
                   'loss': None
                   }
+
 
         tensor = torch.tensor((), dtype=torch.float32)
         leaf_probs = tensor.new_zeros((len(x), self.n_sample_features)).cuda()
@@ -772,9 +802,12 @@ class ModelTree(nn.Module):
                 this_level = next_level
 
         loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss']
-
-        output['leaf_probs'] = leaf_probs
-        output['leaf_logp'] = torch.log(leaf_probs)  # Rob: This is weird...
+        if use_hard_proportions:
+            output['leaf_probs'] = torch.tensor(self.get_hard_proportions(x)[:, np.newaxis], dtype=torch.float32).cuda()
+            output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
+        else:
+            output['leaf_probs'] = leaf_probs
+            output['leaf_logp'] = torch.log(leaf_probs).clamp(min=-1000)  # Rob: This is weird...
 
 #        if y is not None:
 #            for sample_idx in range(len(y)):
@@ -798,7 +831,7 @@ class ModelTree(nn.Module):
                     neg_mean = neg_mean + output['leaf_probs'][sample_idx][0]
                 else:
                     pos_mean = pos_mean + output['leaf_probs'][sample_idx][0]
-            # use the average mean to normal the difference so the square isn't so tiny
+            # use the average mean to normalize the difference so the square isn't so tiny
             output['feature_diff_reg'] = self.feature_diff_penalty * \
                                          -torch.log((((1./(len(y) - sum(y))) * neg_mean - (1./(sum(y))) * pos_mean))**2)
             loss = loss + output['feature_diff_reg']
@@ -822,6 +855,11 @@ class ModelTree(nn.Module):
                 loss = loss + output['log_loss']
             # add regularization on the number of cells fall into the leaf gate of negative samples;
         output['loss'] = loss
+        #print(loss.requires_grad)
+        #hard_props = self.get_hard_proportions(x)
+        #soft_props = output['leaf_probs']
+        #to_print = [(hard_prop, soft_prop.cpu().detach().numpy()[0]) for hard_prop, soft_prop in zip(hard_props, soft_props)]
+        #print(to_print)
         return output
 
 

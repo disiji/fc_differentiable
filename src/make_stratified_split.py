@@ -3,9 +3,12 @@ import pickle
 import os
 import numpy as np
 
+### Note: Data files are not on anvil, run this on laptop with the data files in the 
+### correct directory
+
 DATA_PATH_X = '../data/cll/filtered_8d_1p_x_list.pkl'
 DATA_PATH_Y = '../data/cll/y_1p_list.pkl'
-SAVE_PATH = '../data/cll/8d'
+SAVE_PATH = '../data/cll/8d_minus_bad_dev_labels'
 random_state = 123
 raw_data_dir = '../data/cll/PB1_whole_mqian'
 
@@ -32,6 +35,15 @@ print(dev_labels_after_splitting)
 print(val_labels_after_splitting)
 x_val = [x[:, 0:x.shape[1] - 1] for x in x_val]
 x_dev = [x[:, 0:x.shape[1] - 1] for x in x_dev]
+
+# fix 24242 label to positive - has id 1
+assert(y_dev[1] == 0.)
+y_dev[1] = 1.
+
+# Remove id 5-discrepant result
+x_dev = np.delete(x_dev, 5, 0)
+y_dev = np.delete(y_dev, 5, 0)
+
 
 print('double check shape looks right', x_val[0][0, :])
 

@@ -1,15 +1,24 @@
 from utils.BaselineParamsParser import BaselineParamsParser
 from utils.Flowsom import Flowsom
+from utils.KMeans import KMeans
 
-def main_flowsom(path_to_params):
+def main(path_to_params):
     parser = BaselineParamsParser(path_to_params)
     params = parser.parse_params()
+    # abstract the following into a factory to make
+    # cleaner
     if params['clustering_type'] == 'flowsom':
         model = Flowsom(
                 params['path_to_data_csv'],
-                params['model_params'],
+                params['flowsom_params'],
                 params['columns_to_cluster']
         )
+    elif params['clustering_type'] == 'kmeans':
+        model = \
+            KMeans(
+                params['path_to_data_csv'],
+                params['kmeans_params']
+            )
     else:
         raise ValueError('Model type not recognized')
 
@@ -45,8 +54,8 @@ def main_flowsom(path_to_params):
 
 
 if __name__ == '__main__':
-    path_to_params = '../configs/testing_flowsom.yaml'
-    main_flowsom(path_to_params)
+    path_to_params = '../configs/testing_kmeans.yaml'
+    main(path_to_params)
 
 
 

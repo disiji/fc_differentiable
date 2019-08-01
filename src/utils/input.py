@@ -187,15 +187,64 @@ class Cll4d1pInput(CLLInputBase):
                 ]
             ]
         return self.init_nested_list
-   
+  
+    def _normalize_x_list_all(self):
+        self.x_list, offset, scale = dh.normalize_x_list(self.x_list, offset=self.offset, scale=self.scale)
+        self.x_list = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
+        self.y_list = torch.tensor(self.y_list, dtype=torch.float32)
+        if torch.cuda.is_available():
+            on_cuda_list_x = []
+            for i in range(len(self.x_list)):
+                on_cuda_list_x.append(self.x_list[i].cuda())
+            self.x_list = on_cuda_list_x
+            self.y_list = self.y_list.cuda()
 
-    def _normalize_(self):
-        self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
-        print(self.feature2id, offset, scale, self.reference_nested_list)
+    
+    def _normalize_data_tr_and_nested_list(self):
+        self.x_train, offset, scale = dh.normalize_x_list(self.x_train)
+        #print(self.feature2id, offset, scale, self.reference_nested_list)
         self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
                                                               self.feature2id)
         if not (self.hparams['init_type'] == 'random_corner' or self.hparams['init_type'] == 'same_corners_as_DAFI' or self.hparams['init_type'] == 'padhraics_init' or self.hparams['init_type'] == 'heuristic_init'):
             self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
+        self.offset = offset
+        self.scale = scale
+    def _normalize_data_eval(self):        
+        self.x_eval, offset, scale = dh.normalize_x_list(self.x_eval, offset=self.offset, scale=self.scale)
+
+    def _normalize_(self):
+        self._normalize_data_tr_and_nested_list()
+        if self.hparams['test_size'] == 0:
+            self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
+            self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
+        else:
+            self._normalize_data_eval()
+            self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
+            self.x_eval = [torch.tensor(_, dtype=torch.float32) for _ in self.x_eval]
+            self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
+            self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
+        if torch.cuda.is_available():
+            on_cuda_list_x_train = []
+            on_cuda_list_x_eval = []
+            for i in range(len(self.x_train)):
+                on_cuda_list_x_train.append(self.x_train[i].cuda())
+            if not (self.x_eval is None):
+                for i in range(len(self.x_eval)):
+                    on_cuda_list_x_eval.append(self.x_eval[i].cuda())
+            self.x_train = on_cuda_list_x_train
+            if not (self.x_eval is None):
+                self.x_eval = on_cuda_list_x_eval
+                self.y_eval = self.y_eval.cuda()
+            self.y_train = self.y_train.cuda()
+        self._normalize_x_list_all()
+
+#    def _normalize_(self):
+#        self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
+#        #print(self.feature2id, offset, scale, self.reference_nested_list)
+#        self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
+#                                                              self.feature2id)
+#        if not (self.hparams['init_type'] == 'random_corner' or self.hparams['init_type'] == 'same_corners_as_DAFI' or self.hparams['init_type'] == 'padhraics_init' or self.hparams['init_type'] == 'heuristic_init'):
+#            self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
 
     def _construct_(self):
         self.reference_tree = ReferenceTree(self.reference_nested_list, self.feature2id)
@@ -210,37 +259,59 @@ class Cll4d1pInput(CLLInputBase):
             self.x_eval = None
             self.y_eval = None
             
-            self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
-            self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
+            ##self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
+            ##self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
         else:
-            self.x_train, self.x_eval, self.y_train, self.y_eval = train_test_split(self.x_list, self.y_list,
-                                                                                    test_size=self.hparams['test_size'],
-                                                                                    random_state=random_state)
-            self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
-            self.x_eval = [torch.tensor(_, dtype=torch.float32) for _ in self.x_eval]
-            self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
-            self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
+                # Note validation ids are now from 0-len(val) and the old data ids
+                # will be matched by their offset from len(val) -> len(val) + len(data_ids) -1
+                #self.x_list.extend(augment_x_list)
+                #self.y_list.extend(augment_y_list)
+            idxs = np.arange(len(self.x_list))
+            self.sample_ids = idxs
+            self.x_train, self.x_eval, self.y_train, self.y_eval, self.idxs_train, self.idxs_eval = train_test_split(
+                    self.x_list, self.y_list, idxs,
+                    test_size=self.hparams['test_size'],
+                    random_state=random_state
+            )
+            if not(self.augment_data_paths is None):
+                with open(self.augment_data_paths['X'], 'rb') as f:
+                    augment_x_list = pickle.load(f)
+                with open(self.augment_data_paths['Y'], 'rb') as f:
+                    augment_y_list = pickle.load(f)
+                augment_ids = np.arange(len(augment_x_list))
+                self.idxs_train = np.concatenate([self.idxs_train, augment_ids])
+                self.x_train.extend(augment_x_list)
+                self.y_train.extend(augment_y_list)
+                
+            ##self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
+            ##self.x_eval = [torch.tensor(_, dtype=torch.float32) for _ in self.x_eval]
+            ##self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
+            ##self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
 
-        if torch.cuda.is_available():
-            on_cuda_list_x_train = []
-            on_cuda_list_x_eval = []
-            for i in range(len(self.x_train)):
-                on_cuda_list_x_train.append(self.x_train[i].cuda())
-                if not (self.x_eval is None):
-                    on_cuda_list_x_eval.append(self.x_eval[i].cuda())
-            self.x_train = on_cuda_list_x_train
-            if not (self.x_eval is None):
-                self.x_eval = on_cuda_list_x_eval
-                self.y_eval.cuda()
-            self.y_train = self.y_train.cuda()
+##        if torch.cuda.is_available():
+##            on_cuda_list_x_train = []
+##            on_cuda_list_x_eval = []
+##            for i in range(len(self.x_train)):
+##                on_cuda_list_x_train.append(self.x_train[i].cuda())
+##            if not (self.x_eval is None):
+##                for i in range(len(self.x_eval)):
+##                    on_cuda_list_x_eval.append(self.x_eval[i].cuda())
+##            self.x_train = on_cuda_list_x_train
+##            if not (self.x_eval is None):
+##                self.x_eval = on_cuda_list_x_eval
+##                self.y_eval = self.y_eval.cuda()
+##            self.y_train = self.y_train.cuda()
 
 class Cll8d1pInput(Cll4d1pInput):
     """
     apply FSC-A and FSC-H prefiltering gate and learn other gate locations
     """
 
-    def __init__(self, hparams):
+    def __init__(self, hparams, random_state=0, augment_data_paths=None):
         self.hparams = hparams
+        # used to include dev data in training but not testing
+        self.augment_data_paths = augment_data_paths
+        self.random_state = random_state
         self.features = ['FSC-A', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b']
         self.features_full = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
         self.feature2id = dict((self.features[i], i) for i in range(len(self.features)))
@@ -249,14 +320,16 @@ class Cll8d1pInput(Cll4d1pInput):
         self.unnormalized_x_list_of_numpy = deepcopy(self.x_list)
         self.y_numpy = deepcopy(self.y_list)
         self.reference_nested_list = self._get_reference_nested_list_()
-        if hparams['init_type'] == 'heuristic_init':
-            self._normalize_()
-            self._get_init_nested_list_(hparams)
-        else:
-            self._get_init_nested_list_(hparams)
-            self._normalize_()
+        #if hparams['init_type'] == 'heuristic_init':
+        #    self._normalize_()
+        #    self._get_init_nested_list_(hparams)
+        #else:
+        #    self._get_init_nested_list_(hparams)
+        #    self._normalize_()
+        self.split(random_state=random_state)
+        self._normalize_()
+        self._get_init_nested_list_(hparams)
         self._construct_()
-        self.split()
 
         self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
@@ -267,7 +340,6 @@ class Cll8d1pInput(Cll4d1pInput):
                 on_cuda_list_x_all.append(self.x[i].cuda())
             self.x = on_cuda_list_x_all
             self.y = self.y.cuda()
-
     def _load_data_(self, hparams):
         X_DATA_PATH = hparams['data']['features_path']
         Y_DATA_PATH = hparams['data']['labels_path']
@@ -282,6 +354,7 @@ class Cll8d1pInput(Cll4d1pInput):
                 self.x_list = pickle.load(f)
             with open(Y_DATA_PATH, 'rb') as f:
                 self.y_list = pickle.load(f)
+
         else:
             x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
             x_8d = dh.filter_cll_8d_pb1(x)
@@ -334,19 +407,24 @@ class Cll8d1pInput(Cll4d1pInput):
         elif hparams['init_type'] == 'heuristic_init':
             
             self.init_nested_list = self._get_heuristic_init()
-        else:
+        elif hparams['init_type'] == 'midlle_init':
             self.init_nested_list = self._get_middle_plots_init_nested_list_()
+        else:
+            raise ValueError('init type not recognized')
 
 
     def _get_heuristic_init(self):
         heuristic_initializer = HeuristicInitializer(
             self.hparams['node_type'],
             self.get_gate_data_ids(),
-            np.concatenate(self.get_pos_tr_data()),
-            np.concatenate(self.get_neg_tr_data()),
-            num_gridcells_per_axis = self.hparams['heuristic_init']['num_gridcells_per_axis']
+            np.concatenate(self.get_pos_tr_data(return_numpy=True)),
+            np.concatenate(self.get_neg_tr_data(return_numpy=True)),
+            num_gridcells_per_axis = self.hparams['heuristic_init']['num_gridcells_per_axis'],
+            greedy_filtering = self.hparams['heuristic_init']['use_greedy_filtering'],
+            consider_all_gates=self.hparams['heuristic_init']['consider_all_gates']
         )
         flat_gates = heuristic_initializer.get_heuristic_gates() 
+        self.flat_heuristic_gates = flat_gates
         return self._convert_flattened_list_to_nested_(flat_gates)
                                 
     def get_gate_data_ids(self):
@@ -364,20 +442,46 @@ class Cll8d1pInput(Cll4d1pInput):
     # either numpy or tensor
     # also right now uses all data so these should only be
     # called when no testing data is used in the input object
-    def get_pos_tr_data(self):
+    def get_pos_tr_data(self, return_numpy=False):
         pos_tr_data = \
             [
-                x for idx, x in enumerate(self.x_list)
-                if self.y_list[idx] == 1
+                x for idx, x in enumerate(self.x_train)
+                if self.y_train[idx] == 1
             ]
+        if return_numpy:
+            pos_tr_data = \
+                    [
+                        x.cpu().detach().numpy() for x in pos_tr_data
+                    ]
         return pos_tr_data
 
-    def get_neg_tr_data(self):
+    def get_pos_eval_data(self):
+        pos_ev_data = \
+            [
+                x for idx, x in enumerate(self.x_eval)
+                if self.y_eval[idx] == 1
+            ]
+        return pos_ev_data
+
+    def get_neg_eval_data(self):
+        neg_ev_data = \
+            [
+                x for idx, x in enumerate(self.x_eval)
+                if self.y_eval[idx] == 0
+            ]
+        return neg_ev_data
+
+    def get_neg_tr_data(self, return_numpy=False):
         neg_tr_data = \
             [
-                x for idx, x in enumerate(self.x_list)
-                if self.y_list[idx] == 0
+                x for idx, x in enumerate(self.x_train)
+                if self.y_train[idx] == 0
             ]
+        if return_numpy:
+            neg_tr_data = \
+                    [
+                        x.cpu().detach().numpy() for x in neg_tr_data 
+                    ]
         return neg_tr_data
 
 
