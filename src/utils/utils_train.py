@@ -16,6 +16,7 @@ class Tracker():
         self.corner_reg_loss = []
         self.neg_prop_loss = []
         self.feature_diff_loss = []
+        self.init_reg_loss = []
         self.acc = []
         self.precision = []
         self.recall = []
@@ -28,7 +29,7 @@ class Tracker():
         self.n_iter_opt = (0, 0)
 
     def update(self, model, output, y_true, epoch, i, update_type='lightweight'):
-        y_pred = (output['y_pred'].cpu().detach().numpy() > 0.5) * 1.0
+        y_pred = (output['y_pred'].cpu().detach().numpy() >= 0.5) * 1.0
         self.loss.append(output['loss'].cpu().detach())
         self.log_loss.append(output['log_loss'].cpu().detach())
         self.ref_reg_loss.append(output['ref_reg_loss'].cpu().detach())
@@ -36,6 +37,7 @@ class Tracker():
         self.feature_diff_loss.append(output['feature_diff_reg'].cpu().detach())
         self.corner_reg_loss.append(output['corner_reg_loss'].cpu().detach())
         self.neg_prop_loss.append(output['emp_reg_loss'].cpu().detach())
+        self.init_reg_loss.append(output['init_reg_loss'])
         self.acc.append(sum(y_pred == y_true.cpu().numpy()) * 1.0 / y_true.shape[0])
         if not(update_type== 'lightweight'):
             

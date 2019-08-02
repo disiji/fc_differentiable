@@ -214,7 +214,7 @@ class Cll4d1pInput(CLLInputBase):
 
     def _normalize_(self):
         self._normalize_data_tr_and_nested_list()
-        if self.hparams['test_size'] == 0:
+        if self.hparams['test_size'] == 0 and (self.split_fold_idxs is None):
             self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
             self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
         else:
@@ -253,7 +253,7 @@ class Cll4d1pInput(CLLInputBase):
             self.init_tree = None
 
     def split(self, random_state=123):
-        if self.hparams['test_size'] == 0.:
+        if (self.hparams['test_size'] == 0.) and (self.split_fold_idxs is None):
             self.x_train = self.x_list
             self.y_train = self.y_list
             self.x_eval = None
@@ -261,7 +261,7 @@ class Cll4d1pInput(CLLInputBase):
             
             ##self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
             ##self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
-        else:
+        elif self.split_fold_idxs is None:
                 # Note validation ids are now from 0-len(val) and the old data ids
                 # will be matched by their offset from len(val) -> len(val) + len(data_ids) -1
                 #self.x_list.extend(augment_x_list)
@@ -282,6 +282,17 @@ class Cll4d1pInput(CLLInputBase):
                 self.idxs_train = np.concatenate([self.idxs_train, augment_ids])
                 self.x_train.extend(augment_x_list)
                 self.y_train.extend(augment_y_list)
+        else:
+            idxs = np.arange(len(self.x_list))
+            self.sample_ids = idxs
+            self.idxs_train = self.split_fold_idxs[0]
+            self.idxs_eval = self.split_fold_idxs[1]
+
+            self.x_train = [self.x_list[idx] for idx in self.split_fold_idxs[0]]
+            self.y_train = [self.y_list[idx] for idx in self.split_fold_idxs[0]]
+
+            self.x_eval = [self.x_list[idx] for idx in self.split_fold_idxs[1]]
+            self.y_eval = [self.y_list[idx] for idx in self.split_fold_idxs[1]]
                 
             ##self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
             ##self.x_eval = [torch.tensor(_, dtype=torch.float32) for _ in self.x_eval]
@@ -307,7 +318,7 @@ class Cll8d1pInput(Cll4d1pInput):
     apply FSC-A and FSC-H prefiltering gate and learn other gate locations
     """
 
-    def __init__(self, hparams, random_state=0, augment_data_paths=None):
+    def __init__(self, hparams, random_state=0, augment_data_paths=None, split_fold_idxs=None):
         self.hparams = hparams
         # used to include dev data in training but not testing
         self.augment_data_paths = augment_data_paths
@@ -315,7 +326,7 @@ class Cll8d1pInput(Cll4d1pInput):
         self.features = ['FSC-A', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b']
         self.features_full = ['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3']
         self.feature2id = dict((self.features[i], i) for i in range(len(self.features)))
-
+        self.split_fold_idxs = split_fold_idxs #0 for train, 1 for test
         self._load_data_(hparams)
         self.unnormalized_x_list_of_numpy = deepcopy(self.x_list)
         self.y_numpy = deepcopy(self.y_list)

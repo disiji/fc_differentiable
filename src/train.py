@@ -122,7 +122,7 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint, return_
     # optimal gates
     train_tracker = Tracker()
     eval_tracker = None
-    if not(hparams['test_size'] == 0.):
+    if not((hparams['test_size'] == 0.) and (input.split_fold_idxs is None)):
         eval_tracker = Tracker()
         eval_tracker.model_init = deepcopy(model)
     train_tracker.model_init = deepcopy(model)
@@ -207,11 +207,11 @@ def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=
         if epoch % hparams['n_epoch_eval'] == 0:
             # stats on train
             train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, 1)
-            if not(hparams['test_size'] == 0.):
+            if not((hparams['test_size'] == 0.) and (input.split_fold_idxs is None)):
                 eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, 1)
 
-            loss_tuple = (epoch, 1, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1], 'prop_diff_reg:', train_tracker.feature_diff_loss[-1])
-            print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
+            loss_tuple = (epoch, 1, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1], 'init_reg', train_tracker.init_reg_loss[-1], 'prop_diff_reg:', train_tracker.feature_diff_loss[-1])
+            print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
         
 
 
@@ -227,7 +227,7 @@ def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=
     run_train_only_logistic_regression(model, input.x_train, input.y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
     # update trackers one more time 
     train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, 1)
-    if not(hparams['test_size'] == 0.):
+    if not((hparams['test_size'] == 0.) and (input.split_fold_idxs is None)):
         eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, 1)
 
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))

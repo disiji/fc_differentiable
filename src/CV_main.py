@@ -10,6 +10,7 @@ from utils.input import *
 from utils.utils_plot import *
 from full_output_for_CV import *
 import time
+import matplotlib.pyplot as plt
 
 default_hparams = {
     'logistic_k': 100,
@@ -87,15 +88,23 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
         torch.manual_seed(random_state)
         cll_1p_full_input = Cll8d1pInput(hparams, random_state=random_state)
         cll_1p_full_input_augmented = Cll8d1pInput(hparams, random_state=random_state, augment_data_paths=DEV_DATA_PATHS) 
-        print(cll_1p_full_input.y_train)
-        print(last_y_label)
-        last_y_label = cll_1p_full_input.y_train
+        #some_eval_data = [data.detach().cpu().numpy() for data in cll_1p_full_input.x_eval[10:]]
+        #some_eval_data = np.concatenate(some_eval_data)[0:100000]
+        #plt.scatter(some_eval_data[:, 0], some_eval_data[:, 3], s=.1)
+        #plt.savefig('meow.png')
+        #plt.clf()
+        #plt.scatter(some_eval_data[:, 1], some_eval_data[:, 2], s=.1)
+        #plt.savefig('meow2.png')
+        #print(cll_1p_full_input.y_train)
+        #print(last_y_label)
+        #last_y_label = cll_1p_full_input.y_train
         model_tree = ModelTree(cll_1p_full_input.reference_tree,
                                logistic_k=hparams['logistic_k'],
                                regularisation_penalty=hparams['regularization_penalty'],
                                negative_box_penalty=hparams['negative_box_penalty'],
                                positive_box_penalty=hparams['positive_box_penalty'],
                                corner_penalty=hparams['corner_penalty'],
+                               init_reg_penalty=hparams['init_reg_penalty'],
                                feature_diff_penalty=hparams['feature_diff_penalty'],
                                gate_size_penalty=hparams['gate_size_penalty'],
                                init_tree=cll_1p_full_input.init_tree,
@@ -111,6 +120,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                                negative_box_penalty=hparams['negative_box_penalty'],
                                positive_box_penalty=hparams['positive_box_penalty'],
                                corner_penalty=hparams['corner_penalty'],
+                               init_reg_penalty=hparams['init_reg_penalty'],
                                feature_diff_penalty=hparams['feature_diff_penalty'],
                                gate_size_penalty=hparams['gate_size_penalty'],
                                init_tree=cll_1p_full_input.init_tree,
@@ -142,7 +152,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
             run_train_full_batch_logreg_to_conv(hparams, cll_1p_full_input, model_tree, model_checkpoint=model_checkpoint)
         print('Training model with tr split of validation data, and the dev data')
         model_tree_aug, train_tracker_maug, eval_tracker_maug, run_time, model_checkpoint_dict_aug = \
-            run_train_full_batch_logreg_to_conv(hparams, cll_1p_full_input, model_tree_aug, model_checkpoint=model_checkpoint)
+            run_train_full_batch_logreg_to_conv(hparams, cll_1p_full_input_augmented, model_tree_aug, model_checkpoint=model_checkpoint)
 
 
 
@@ -186,8 +196,8 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
 
 if __name__ == '__main__':
-    yaml_filename = '../configs/CV_runs.yaml'
-    #yaml_filename = '../configs/testing_overlaps.yaml'
+    #yaml_filename = '../configs/CV_runs.yaml'
+    yaml_filename = '../configs/testing_overlaps.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)

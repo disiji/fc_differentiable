@@ -858,26 +858,28 @@ def load_output(path_to_hparams):
         #call split on input here if theres a bug
         return output
 
-def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None, device_data=1):
+def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None, device_data=1, plot_train=True):
     model = output['models_per_iteration'][iteration]
     hparams = output['hparams']
     cll_1p_full_input = output['cll_1p_full_input']
+    full_data = cll_1p_full_input.x_train if plot_train else cll_1p_full_input.x_eval
+    full_labels = cll_1p_full_input.y_train if plot_train else cll_1p_full_input.y_eval
     dafi_tree = output['dafi_tree']
 
     if torch.cuda.is_available():
         model.to(device=device_data)
     data_x_tr_pos = [
-            x for idx, x in enumerate(cll_1p_full_input.x_train )
-            if cll_1p_full_input.y_train[idx] == 1.
+            x for idx, x in enumerate(full_data)
+            if full_labels[idx] == 1.
     ]
     data_x_tr_neg = [
-            x for idx, x in enumerate(cll_1p_full_input.x_train )
-            if cll_1p_full_input.y_train[idx] == 0.
+            x for idx, x in enumerate(full_data)
+            if full_labels[idx] == 0.
     ]
 
     data_for_overlaps = [
                             x.cpu().detach().numpy()
-                            for x in cll_1p_full_input.x_train
+                            for x in full_data
                         ]
                         
 
@@ -931,13 +933,13 @@ def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None,
     features_mean_neg = np.mean(model_output_neg['leaf_probs'].detach().cpu().numpy())
     
     run_train_only_logistic_regression(
-            model, cll_1p_full_input.x_train,
-            cll_1p_full_input.y_train, hparams['learning_rate_classifier'],
+            model, full_data,
+            full_labels, hparams['learning_rate_classifier'],
             verbose=False
     )
-    model_output = model(cll_1p_full_input.x_train, cll_1p_full_input.y_train)
+    model_output = model(full_data, full_labels)
 
-    y_true = cll_1p_full_input.y_train
+    y_true = full_labels
     y_pred = model_output['y_pred'].detach().cpu().numpy()
 #    print('y_pred', np.round(y_pred))
 #    print('y_true', y_true)

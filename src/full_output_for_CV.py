@@ -232,5 +232,13 @@ def run_write_full_output_for_CV(model, dafi_model, input, trackers_dict, hparam
     plt.clf()
 
 
+    make_single_iter_pos_and_neg_gates_plot(output, 0)
+    plt.savefig('../output/%s/pos_and_neg_gates_iter_0.png' %hparams['experiment_name'])
+    plt.clf()
+    make_single_iter_pos_and_neg_gates_plot(output, len(output['models_per_iteration']) - 1)
+    plt.savefig('../output/%s/pos_and_neg_gates_iter_%d.png' %(hparams['experiment_name'], hparams['seven_epochs_for_gate_motion_plot'][-1]))
+    plt.clf()
+
+
     with open('../output/%s/model_checkpoints.pkl' %(experiment_name), 'wb') as f:
             pickle.dump(model_checkpoint_dict, f)

@@ -82,6 +82,7 @@ class ModelNode(nn.Module):
         self.gate_dim2 = self.reference_tree.gate.gate_dim2
         self.gate_size_default = gate_size_default
         self.is_root = is_root
+        self.init_tree=init_tree
         if init_tree == None:
             self.gate_low1_param = nn.Parameter(
                 torch.tensor(self.__log_odds_ratio__(self.reference_tree.gate.gate_low1), dtype=torch.float32))
@@ -154,6 +155,13 @@ class ModelNode(nn.Module):
                           + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
                           + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
                           + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
+        if self.init_tree is None:
+            init_reg_penalty = 0.0
+        else:
+            init_reg_penalty = (gate_low1 - self.init_tree.gate.gate_low1) ** 2 \
+                              + (gate_low2 - self.init_tree.gate.gate_low2) ** 2 \
+                              + (gate_upp1 - self.init_tree.gate.gate_upp1) ** 2 \
+                              + (gate_upp2 - self.init_tree.gate.gate_upp2) ** 2
         size_reg_penalty = (abs(gate_upp1 - gate_low1) - self.gate_size_default[0]) ** 2 + \
                            (abs(gate_upp2 - gate_low2) - self.gate_size_default[1]) ** 2
         
@@ -165,7 +173,7 @@ class ModelNode(nn.Module):
                                                                  gate_low1 ** 2 + (1 - gate_upp2) ** 2,
                                                                  (1 - gate_upp1) ** 2 + gate_low2 ** 2,
                                                                  (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2], dim=0)))
-        return logp, ref_reg_penalty, size_reg_penalty, corner_reg_penalty
+        return logp, ref_reg_penalty, init_reg_penalty, size_reg_penalty, corner_reg_penalty
 
 class SquareModelNode(ModelNode):
     def __init__(self, logistic_k, reference_tree, init_tree=None, gate_size_default=(1./4, 1./4), is_root=False):
@@ -182,6 +190,7 @@ class SquareModelNode(ModelNode):
             self.init_gate_params(reference_tree)
         else:
             self.init_gate_params(init_tree)
+            self.init_tree = init_tree
 
 
 
@@ -402,10 +411,15 @@ class SquareModelNode(ModelNode):
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
                + F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim2] - gate_low2))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim2] - gate_upp2)))
+
         ref_reg_penalty = (gate_low1 - self.reference_tree.gate.gate_low1) ** 2 \
                           + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
                           + (gate_upp1 - self.reference_tree.gate.gate_upp1) ** 2 \
                           + (gate_upp2 - self.reference_tree.gate.gate_upp2) ** 2
+        init_reg_penalty = (gate_low1 - self.init_tree.gate.gate_low1) ** 2 \
+                          + (gate_low2 - self.init_tree.gate.gate_low2) ** 2 \
+                          + (gate_upp1 - self.init_tree.gate.gate_upp1) ** 2 \
+                          + (gate_upp2 - self.init_tree.gate.gate_upp2) ** 2
         size_reg_penalty = (abs(gate_upp1 - gate_low1) - self.gate_size_default[0]) ** 2 + \
                            (abs(gate_upp2 - gate_low2) - self.gate_size_default[1]) ** 2
         
@@ -417,7 +431,7 @@ class SquareModelNode(ModelNode):
                                                                  gate_low1 ** 2 + (1 - gate_upp2) ** 2,
                                                                  (1 - gate_upp1) ** 2 + gate_low2 ** 2,
                                                                  (1 - gate_upp1) ** 2 + (1 - gate_upp2) ** 2], dim=0)))
-        return logp, ref_reg_penalty, size_reg_penalty, corner_reg_penalty
+        return logp, ref_reg_penalty, init_reg_penalty, size_reg_penalty, corner_reg_penalty
 
     def __repr__(self):
         repr_string = ('ModelNode(\n'
@@ -493,6 +507,7 @@ class ModelTree(nn.Module):
                  corner_penalty=0.,
                  gate_size_penalty=0.,
                  feature_diff_penalty=0.,
+                 init_reg_penalty=0.,
                  init_tree=None,
                  loss_type='logistic',
                  gate_size_default=(1. / 2, 1. / 2),
@@ -509,6 +524,7 @@ class ModelTree(nn.Module):
         self.regularisation_penalty = regularisation_penalty
         self.positive_box_penalty = positive_box_penalty
         self.negative_box_penalty = negative_box_penalty
+        self.init_reg_penalty = init_reg_penalty
         self.corner_penalty = corner_penalty
         self.feature_diff_penalty = feature_diff_penalty
         self.gate_size_penalty = gate_size_penalty
@@ -767,6 +783,7 @@ class ModelTree(nn.Module):
                   'y_pred': None,
                   'ref_reg_loss': 0,
                   'size_reg_loss': 0,
+                  'init_reg_loss': 0,
                   'emp_reg_loss': 0,
                   'corner_reg_loss': 0,
                   'log_loss': None,
@@ -788,10 +805,11 @@ class ModelTree(nn.Module):
             while this_level:
                 next_level = list()
                 for (node, pathlogp) in this_level:
-                    logp, ref_reg_penalty, size_reg_penalty, corner_reg_penalty = node(x[sample_idx])
+                    logp, ref_reg_penalty, init_reg_penalty, size_reg_penalty, corner_reg_penalty = node(x[sample_idx])
                     output['ref_reg_loss'] += ref_reg_penalty * self.regularisation_penalty / len(x)
                     output['size_reg_loss'] += size_reg_penalty * self.gate_size_penalty / len(x)
                     output['corner_reg_loss'] += corner_reg_penalty * self.corner_penalty / len(x)
+                    output['init_reg_loss'] += init_reg_penalty * self.init_reg_penalty/ len(x)
                     pathlogp = pathlogp + logp 
                     if len(self.children_dict[str(id(node))]) > 0:
                         for child_node in self.children_dict[str(id(node))]:
@@ -801,7 +819,7 @@ class ModelTree(nn.Module):
                         leaf_idx += 1
                 this_level = next_level
 
-        loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss']
+        loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss'] + output['init_reg_loss']
         if use_hard_proportions:
             output['leaf_probs'] = torch.tensor(self.get_hard_proportions(x)[:, np.newaxis], dtype=torch.float32).cuda()
             output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
