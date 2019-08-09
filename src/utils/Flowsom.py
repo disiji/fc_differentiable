@@ -17,6 +17,7 @@ class Flowsom:
         self.df = deepcopy(self._fsom.df)
         self.num_samples = self.df[['sample_ids']].nunique().values[0]
         self.sample_ids = self.df.sample_ids.unique().astype(int)
+        print(self.sample_ids)
         self.params = model_params
         self.random_seed = random_seed
         self.labels = self.get_labels()
@@ -51,7 +52,7 @@ class Flowsom:
         print('Meta clusters fit')
     
         self.construct_sample_level_proportions()
-        self.logistic_regressor = LogisticRegression()
+        self.logistic_regressor = LogisticRegression(C=1e10)
         self.fit_logistic_regressor()
         print('Logistic Regressor fit')
 

@@ -59,6 +59,12 @@ default_hparams = {
     },
 }
 
+DEV_DATA_PATHS = {
+    'X': '../data/cll/8d_FINAL/x_dev_8d_1p.pkl',  
+    'Y': '../data/cll/8d_FINAL/y_dev_8d_1p.pkl'
+    }
+
+
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
     torch.cuda.set_device(1)
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
@@ -114,6 +120,8 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
             model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \
                 run_train_model_two_phase(hparams, cll_1p_full_input, model_checkpoint=model_checkpoint)
         elif hparams['testing_new_single_phase_training']:
+
+            cll_1p_full_input = Cll8d1pInput(hparams, random_state=random_state, augment_data_paths=DEV_DATA_PATHS)
             model_tree, train_tracker_m, eval_tracker_m, run_time, model_checkpoint_dict = \
                 run_train_full_batch_logreg_to_conv(hparams, cll_1p_full_input, model_tree, model_checkpoint=model_checkpoint)
 
@@ -179,7 +187,8 @@ if __name__ == '__main__':
     #yaml_filename = '../configs/full_panel_plots_gs=5.yaml'
     #yaml_filename = '../configs/testing_corner_init.yaml'
     #yaml_filename = '../configs/testing_gs_hard_constraint.yaml'
-    yaml_filename = '../configs/testing_overlaps.yaml'
+    #yaml_filename = '../configs/testing_overlaps.yaml'
+    yaml_filename = '../configs/test_run_with_CV_params.yaml'
    # yaml_filename = '../configs/testing_my_heuristic_init.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:

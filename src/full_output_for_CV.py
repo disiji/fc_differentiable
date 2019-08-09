@@ -4,6 +4,10 @@ import pickle
 from utils.utils_plot import make_single_iter_pos_and_neg_gates_plot
 import matplotlib.pyplot as plt
 from utils.CellOverlaps import CellOverlaps
+from scipy.stats import kendalltau
+from scipy.stats import wilcoxon
+
+FMT_STR = '%.4f'
 '''
 File containing just the output functions used in
 the cross validation runs
@@ -13,7 +17,7 @@ def write_class_probs(model, data, labels, data_idxs, savepath):
     probs = output['y_pred'].detach().cpu().numpy()
     probs_with_ids = np.hstack([probs[:, np.newaxis], data_idxs[:, np.newaxis]])
     header = 'Probabilities, Sample ids'
-    np.savetxt(savepath, probs_with_ids, delimiter=',', header=header)
+    np.savetxt(savepath, probs_with_ids, delimiter=',', header=header, fmt=FMT_STR)
 
 def write_probs_for_tr_te_for_model_dafi(model, dafi_model, input, experiment_name):
     save_prefix = '../output/%s/Probabilities/' %experiment_name
@@ -62,30 +66,71 @@ def get_diagnostics_init_final(model, data, labels, tracker):
     output_i = tracker.model_init(data, labels)
     pos_leaf_probs_i = [from_gpu_to_numpy(out) for o,out in enumerate(output_i['leaf_probs']) if labels[o] == 1.]
     neg_leaf_probs_i = [from_gpu_to_numpy(out) for o,out in enumerate(output_i['leaf_probs']) if labels[o] == 0.]
+    diagnostics['acc_i'] = tracker.acc[0]
     diagnostics['mean_feature_i_pos'] = np.mean(pos_leaf_probs_i)
     diagnostics['mean_feature_i_neg'] = np.mean(neg_leaf_probs_i)
 
     diagnostics['log_loss_i'] = tracker.log_loss[0]
-    diagnostics['acc_i'] = tracker.acc[0]
     diagnostics['neg_prop_reg_i'] = tracker.neg_prop_loss[0]
     diagnostics['feature_diff_reg_i'] = tracker.feature_diff_loss[0]
 
     output_f = model(data, labels)
     pos_leaf_probs_f = [from_gpu_to_numpy(out) for o,out in enumerate(output_f['leaf_probs']) if labels[o] == 1.]
     neg_leaf_probs_f = [from_gpu_to_numpy(out) for o,out in enumerate(output_f['leaf_probs']) if labels[o] == 0.]
+    all_probs_f = [from_gpu_to_numpy(out) for out in output_f['leaf_probs']]
+
+    diagnostics['log_loss_f'] = tracker.log_loss[-1]
+    diagnostics['neg_prop_reg_f'] = tracker.neg_prop_loss[-1]
+    diagnostics['feature_diff_reg_f'] = tracker.feature_diff_loss[-1]
     diagnostics['mean_feature_f_pos'] = np.mean(pos_leaf_probs_f)
     diagnostics['mean_feature_f_neg'] = np.mean(neg_leaf_probs_f)
 
+    expert_preds = np.array([0. if prop <= .00015 else 1. for prop in all_probs_f])
+    diagnostics['expert_thresh_acc_f'] = np.sum(expert_preds == from_gpu_to_numpy(labels))/len(expert_preds)
 
+    model_class_probs = from_gpu_to_numpy(output_f['y_pred'])
+    
+    weights = (model_class_probs - 0.5)**2/(np.sum((model_class_probs - 0.5)**2))
+    weighted_avg_thresh = np.sum(weights.reshape([-1, 1]) * np.array(all_probs_f).reshape([-1, 1]))
+    print(weighted_avg_thresh)
+    weighted_avg_preds = np.array([1. if prop > weighted_avg_thresh else 0. for prop in all_probs_f])
+    diagnostics['wavg_thresh_acc_f'] = np.sum(weighted_avg_preds == from_gpu_to_numpy(labels))/len(weighted_avg_preds)
 
-    diagnostics['log_loss_f'] = tracker.log_loss[-1]
     diagnostics['acc_f'] = tracker.acc[-1]
-    diagnostics['neg_prop_reg_f'] = tracker.neg_prop_loss[-1]
-    diagnostics['feature_diff_reg_f'] = tracker.feature_diff_loss[-1]
 
     return diagnostics
 
+def write_kendalls_tau_and_wilcoxon(model, dafi_model, input, experiment_name):
+    model_output = model(input.x_list, input.y_list)
+    dafi_output = dafi_model(input.x_list, input.y_list)
 
+    model_preds = from_gpu_to_numpy(model_output['y_pred'])
+    model_preds_rankings = np.argsort(model_preds)
+    model_feats = from_gpu_to_numpy(model_output['leaf_probs'])
+    model_feats_rankings = np.argsort(model_feats)
+
+    dafi_preds = from_gpu_to_numpy(dafi_output['y_pred'])
+    dafi_preds_rankings = np.argsort(dafi_preds)
+    dafi_feats = from_gpu_to_numpy(dafi_output['leaf_probs'])
+    dafi_feats_rankings = np.argsort(dafi_feats)
+
+    wilcoxon_feats = wilcoxon(dafi_feats.reshape(-1), model_feats.reshape(-1)) 
+    wilcoxon_preds = wilcoxon(dafi_preds.reshape(-1), model_preds.reshape(-1))
+    kendall_feats = kendalltau(dafi_feats_rankings.reshape(-1), model_feats_rankings.reshape(-1))
+    kendall_preds = kendalltau(dafi_preds_rankings.reshape(-1), model_preds_rankings.reshape(-1))
+
+    header = 'wilcoxon_feats,wilcoxon_preds,kendall_feats,kendall_preds'
+    results = np.array([wilcoxon_feats, wilcoxon_preds, kendall_feats, kendall_preds])
+    savepath = '../output/%s/significance_tests.csv' %experiment_name
+    #if not(os.path.exists(savepath)):
+    #    os.mkdir(savepath)
+    np.savetxt(savepath, results, header=header, fmt=FMT_STR)
+
+    
+
+
+
+    
 
 def write_model_diagnostics(model, dafi_model, input, tracker_train_m, tracker_eval_m, tracker_train_d, tracker_eval_d, experiment_name):
     tr_diagnostics_m = get_diagnostics_init_final(model, input.x_train, input.y_train, tracker_train_m)
@@ -106,10 +151,10 @@ def write_model_diagnostics(model, dafi_model, input, tracker_train_m, tracker_e
             continue
         header += ',' + key
 
-    np.savetxt(save_prefix + 'tr_diagnostics_model.csv', np.array(list(tr_diagnostics_m.values())).reshape([1, -1]), header=header, delimiter=',')
-    np.savetxt(save_prefix + 'te_diagnostics_model.csv', np.array(list(te_diagnostics_m.values())).reshape([1, -1]), header=header, delimiter=',')
-    np.savetxt(save_prefix + 'tr_diagnostics_dafi.csv', np.array(list(tr_diagnostics_d.values())).reshape([1, -1]), header=header,delimiter=',')
-    np.savetxt(save_prefix + 'te_diagnostics_dafi.csv', np.array(list(te_diagnostics_d.values())).reshape([1, -1]), header=header, delimiter=',')
+    np.savetxt(save_prefix + 'tr_diagnostics_model.csv', np.array(list(tr_diagnostics_m.values())).reshape([1, -1]), header=header, delimiter=',', fmt=FMT_STR)
+    np.savetxt(save_prefix + 'te_diagnostics_model.csv', np.array(list(te_diagnostics_m.values())).reshape([1, -1]), header=header, delimiter=',', fmt=FMT_STR)
+    np.savetxt(save_prefix + 'tr_diagnostics_dafi.csv', np.array(list(tr_diagnostics_d.values())).reshape([1, -1]), header=header,delimiter=',', fmt=FMT_STR)
+    np.savetxt(save_prefix + 'te_diagnostics_dafi.csv', np.array(list(te_diagnostics_d.values())).reshape([1, -1]), header=header, delimiter=',', fmt=FMT_STR)
 
 
 
@@ -190,7 +235,7 @@ def save_model_and_dafi(model, dafi_model, experiment_name):
     with open(savepath + 'dafi_model.pkl', 'wb') as f:
         pickle.dump(dafi_model, f)
 
-def run_write_full_output_for_CV(model, dafi_model, input, trackers_dict, hparams, model_checkpoint_dict):
+def run_write_full_output_for_CV(model, dafi_model, input, trackers_dict, hparams, model_checkpoint_dict, device_data=1):
     experiment_name = hparams['experiment_name']
     write_probs_for_tr_te_for_model_dafi(model, dafi_model, input, experiment_name)
 
@@ -211,6 +256,8 @@ def run_write_full_output_for_CV(model, dafi_model, input, trackers_dict, hparam
 
     write_gate_overlaps(model, dafi_model, input, experiment_name, trackers_dict['tracker_train_m'])
 
+    write_kendalls_tau_and_wilcoxon(model, dafi_model, input, experiment_name)
+
     save_model_and_dafi(model, dafi_model, experiment_name)
     
     # ouput dictionary for my plotting code
@@ -224,18 +271,18 @@ def run_write_full_output_for_CV(model, dafi_model, input, trackers_dict, hparam
     output['hparams'] = hparams
     output['cll_1p_full_input'] = input
     output['dafi_tree'] = dafi_model
-    make_single_iter_pos_and_neg_gates_plot(output, 0)
+    make_single_iter_pos_and_neg_gates_plot(output, 0, device_data=device_data)
     plt.savefig('../output/%s/pos_and_neg_gates_iter_0.png' %hparams['experiment_name'])
     plt.clf()
-    make_single_iter_pos_and_neg_gates_plot(output, len(output['models_per_iteration']) - 1)
+    make_single_iter_pos_and_neg_gates_plot(output, len(output['models_per_iteration']) - 1, device_data=device_data)
     plt.savefig('../output/%s/pos_and_neg_gates_iter_%d.png' %(hparams['experiment_name'], hparams['seven_epochs_for_gate_motion_plot'][-1]))
     plt.clf()
 
 
-    make_single_iter_pos_and_neg_gates_plot(output, 0)
+    make_single_iter_pos_and_neg_gates_plot(output, 0, device_data=device_data)
     plt.savefig('../output/%s/pos_and_neg_gates_iter_0.png' %hparams['experiment_name'])
     plt.clf()
-    make_single_iter_pos_and_neg_gates_plot(output, len(output['models_per_iteration']) - 1)
+    make_single_iter_pos_and_neg_gates_plot(output, len(output['models_per_iteration']) - 1, device_data=device_data)
     plt.savefig('../output/%s/pos_and_neg_gates_iter_%d.png' %(hparams['experiment_name'], hparams['seven_epochs_for_gate_motion_plot'][-1]))
     plt.clf()
 

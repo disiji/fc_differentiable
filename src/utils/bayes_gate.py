@@ -146,7 +146,6 @@ class ModelNode(nn.Module):
 #                self.gate_upp1_param.detach().item(), self.gate_upp2_param.detach().item()
 #        ])
 
-       
         logp = F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim1] - gate_low1))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
                + F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim2] - gate_low2))) \
@@ -371,6 +370,12 @@ class SquareModelNode(ModelNode):
 
         #print(F.sigmoid(self.center1_param), F.sigmoid(self.center2_param))
         #print(F.sigmoid(self.side_length_param))
+    def replace_nans_with_0(self, grad):
+        if torch.isnan(grad):
+            if torch.cuda.is_available():
+                grad = torch.tensor([0.]).cuda()
+        return torch.autograd.Variable(grad)
+
 
     def forward(self, x):
         """
@@ -378,11 +383,15 @@ class SquareModelNode(ModelNode):
         :param x: (n_cell, n_cell_features)
         :return: (logp, reg_penalty)
         """
-
+        #self.side_length_param.register_hook(lambda x: print(x, 'side param'))
+        self.side_length_param.register_hook(self.replace_nans_with_0)
+        self.center1_param.register_hook(self.replace_nans_with_0)
+        self.center2_param.register_hook(self.replace_nans_with_0)
         gate_upp1 = F.sigmoid(self.center1_param) + F.sigmoid(self.side_length_param)/2.
         gate_low1 = F.sigmoid(self.center1_param) - F.sigmoid(self.side_length_param)/2.
         gate_upp2 = F.sigmoid(self.center2_param) +  F.sigmoid(self.side_length_param)/2.
         gate_low2 = F.sigmoid(self.center2_param) -  F.sigmoid(self.side_length_param)/2.
+        gate_low1.register_hook(self.replace_nans_with_0)
         #print(self.gate_dim1, self.gate_dim2)
         #print(self.center1_param, self.side_length_param)
         #print(self.center1_param.grad, self.side_length_param.grad, 'huh betta not be none')
@@ -405,12 +414,14 @@ class SquareModelNode(ModelNode):
 #                self.gate_low1_param.detach().item(), self.gate_low2_param.detach().item(), 
 #                self.gate_upp1_param.detach().item(), self.gate_upp2_param.detach().item()
 #        ])
-
-       
+        #A = F.logsigmoid(self.logistic_k  * ((x[:, self.gate_dim1] - gate_low1)))
+        #A.register_hook(lambda x: torch.clamp(x, min=1e-10, max=1e10))
+        #
         logp = F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim1] - gate_low1))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
                + F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim2] - gate_low2))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim2] - gate_upp2)))
+
 
         ref_reg_penalty = (gate_low1 - self.reference_tree.gate.gate_low1) ** 2 \
                           + (gate_low2 - self.reference_tree.gate.gate_low2) ** 2 \
@@ -605,6 +616,8 @@ class ModelTree(nn.Module):
 
     def get_data_inside_all_gates(self, data):
         return self.filter_data(data)[-1]
+    
+
 
     def filter_data(self, data):
         # lists easily function as stacks in python
@@ -626,6 +639,9 @@ class ModelTree(nn.Module):
                 data_stack.append(filtered_data[-1])
 
         return filtered_data
+
+    def get_list_of_model_nodes(self):
+        return self.apply_function_depth_first(lambda x: x)
 
     '''
     applies a function to each node in the
@@ -657,7 +673,13 @@ class ModelTree(nn.Module):
     '''
     def get_flattened_gates(self):
         return self.apply_function_depth_first(ModelTree.get_gate)
-    
+   
+    def get_flattened_gates_numbers(self):
+        gates_with_objects = self.apply_function_depth_first(ModelTree.get_gate)
+        flat_gates = []
+        for gate in gates_with_objects:
+            flat_gates.append([gate.low1, gate.upp1, gate.low2, gate.upp2])
+        return flat_gates
     # have to custom implement deepcopy so 
     # the keys for the dictionary are updated
     # to match the id of the new copied nodes
@@ -765,6 +787,134 @@ class ModelTree(nn.Module):
         )
         return proportions
 
+    def register_nan_hook(self, tensor, string='hiss'):
+        tensor.register_hook(lambda x: print(torch.sum(torch.isnan(x)), string))
+
+    def get_hard_proportions_4chain(self, x_list):
+        x_list = [x.cpu().detach().numpy() for x in x_list]
+        nodes = self.get_nodes_four_chain()
+        proportions = []
+        for x in x_list:
+            tot_num_in_x = len(x)
+            for node in nodes:
+                x = self.filter_data_at_single_node(x, node)
+            proportions.append(x.shape[0]/tot_num_in_x)
+        return np.array(proportions)
+
+
+    def get_nodes_four_chain(self):
+        root = self.root
+        children_dict_values = [value for value in self.children_dict.values()]
+        child1 = children_dict_values[1][0]
+        child2 = children_dict_values[2][0]
+        child3 = children_dict_values[3][0]
+        return [root, child1, child2, child3]
+
+    #only use if model is a chain of four nodes-this needs to be refactored in a new object probably
+    def forward_4chain(self, x, y=None, detach_logistic_params=False, use_hard_proportions=False, device=1):
+        output = {'leaf_probs': None,
+                  'leaf_logp': None,
+                  'y_pred': None,
+                  'ref_reg_loss': 0,
+                  'size_reg_loss': 0,
+                  'init_reg_loss': 0,
+                  'emp_reg_loss': 0,
+                  'corner_reg_loss': 0,
+                  'log_loss': None,
+                  'loss': None
+                  }
+
+        DEVICE = device
+        tensor = torch.tensor((), dtype=torch.float32)
+        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features)).cuda(DEVICE)
+        if torch.cuda.is_available():
+            leaf_probs.cuda(DEVICE)
+
+        leaf_idx = 0
+        for sample_idx in range(len(x)):
+
+            pathlogp = 0
+            nodes = self.get_nodes_four_chain()
+            for node in nodes:
+                logp, ref_reg_penalty, init_reg_penalty, size_reg_penalty, corner_reg_penalty = node(x[sample_idx])
+                output['ref_reg_loss'] += ref_reg_penalty * self.regularisation_penalty / len(x) 
+                output['size_reg_loss'] += size_reg_penalty * self.gate_size_penalty / len(x)
+                output['corner_reg_loss'] += corner_reg_penalty * self.corner_penalty / len(x)
+                output['init_reg_loss'] += init_reg_penalty * self.init_reg_penalty/ len(x)
+                pathlogp = pathlogp + logp
+               
+            if x[sample_idx].shape[0] == 0.:
+                raise ValueError('Some sample has shape 0 ie no cells!!')
+            leaf_probs[sample_idx, leaf_idx] = pathlogp.exp().sum(dim=0) / x[sample_idx].shape[0]
+
+
+        loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss'] + output['init_reg_loss']
+        #self.register_nan_hook(output['size_reg_loss'], string='size reg')
+        #self.register_nan_hook(output['ref_reg_loss'], string='reference reg')
+        #self.register_nan_hook(output['init_reg_loss'], string='init_reg')
+        if use_hard_proportions:
+            output['leaf_probs'] = torch.tensor(self.get_hard_proportions_4chain(x)[:, np.newaxis], dtype=torch.float32).cuda(DEVICE)
+            output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
+        else:
+            output['leaf_probs'] = leaf_probs
+            output['leaf_logp'] = torch.log(leaf_probs).clamp(min=-1000)  # Rob: This is weird...
+
+#        if y is not None:
+#            for sample_idx in range(len(y)):
+#                if y[sample_idx] == 0:
+#                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.negative_box_penalty * \
+#                                             torch.abs(output['leaf_probs'][sample_idx][0] - self.neg_proportion_default)/ (len(y) - sum(y))
+#                else:
+#                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
+#                                             output['leaf_probs'][sample_idx][0] / sum(y)
+#        output['loss'] = loss + output['emp_reg_loss']
+
+        # Note: it doesn't look like this is implemented for more than one leaf node!
+        # replacing with torch sum should fix this
+        if y is not None:
+            pos_mean = 0.
+            neg_mean = 0.
+            for sample_idx in range(len(y)):
+                if y[sample_idx] == 0:
+                    output['emp_reg_loss'] = output['emp_reg_loss'] + self.negative_box_penalty * \
+                                             torch.abs(output['leaf_logp'][sample_idx][0] - np.log(self.neg_proportion_default))/ (len(y) - sum(y))
+                    neg_mean = neg_mean + output['leaf_probs'][sample_idx][0]
+                else:
+                    pos_mean = pos_mean + output['leaf_probs'][sample_idx][0]
+            # use the average mean to normalize the difference so the square isn't so tiny
+            output['feature_diff_reg'] = self.feature_diff_penalty * \
+                                         -torch.log((((1./(len(y) - sum(y))) * neg_mean - (1./(sum(y))) * pos_mean))**2)
+            loss = loss + output['feature_diff_reg']
+            #self.register_nan_hook(output['feature_diff_reg'], string='feature diff')
+            #self.register_nan_hook(output['emp_reg_loss'], string='emptiness')
+
+                #else:
+                #    output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
+                #                             output['leaf_probs'][sample_idx][0] / sum(y)
+        loss = loss + output['emp_reg_loss']
+
+        if self.classifier:
+            if detach_logistic_params:
+                output['leaf_logp'] = output['leaf_logp'].detach()
+            output['y_pred'] = torch.sigmoid(self.linear(output['leaf_logp'])).squeeze(1)
+        
+        if y is not None:
+            if self.classifier:
+                if self.loss_type == "logistic":
+                    output['log_loss'] = self.criterion(self.linear(output['leaf_logp']).squeeze(1), y)
+                elif self.loss_type == "MSE":
+                    output['log_loss'] = self.criterion(output['y_pred'], y)
+                loss = loss + output['log_loss']
+            # add regularization on the number of cells fall into the leaf gate of negative samples;
+        output['loss'] = loss
+        #self.register_nan_hook(loss, 'total loss')
+        #print(self.get_flattened_gates_numbers())
+        #print(loss.requires_grad)
+        #hard_props = self.get_hard_proportions(x)
+        #soft_props = output['leaf_probs']
+        #to_print = [(hard_prop, soft_prop.cpu().detach().numpy()[0]) for hard_prop, soft_prop in zip(hard_props, soft_props)]
+        #print(to_print)
+        return output
 
 
     def forward(self, x, y=None, detach_logistic_params=False, use_hard_proportions=False):
@@ -806,7 +956,7 @@ class ModelTree(nn.Module):
                 next_level = list()
                 for (node, pathlogp) in this_level:
                     logp, ref_reg_penalty, init_reg_penalty, size_reg_penalty, corner_reg_penalty = node(x[sample_idx])
-                    output['ref_reg_loss'] += ref_reg_penalty * self.regularisation_penalty / len(x)
+                    output['ref_reg_loss'] += ref_reg_penalty * self.regularisation_penalty / len(x) 
                     output['size_reg_loss'] += size_reg_penalty * self.gate_size_penalty / len(x)
                     output['corner_reg_loss'] += corner_reg_penalty * self.corner_penalty / len(x)
                     output['init_reg_loss'] += init_reg_penalty * self.init_reg_penalty/ len(x)
@@ -815,11 +965,16 @@ class ModelTree(nn.Module):
                         for child_node in self.children_dict[str(id(node))]:
                             next_level.append((child_node, pathlogp))
                     else:
+                        if x[sample_idx].shape[0] == 0.:
+                            raise ValueError('Some sample has shape 0 ie no cells!!')
                         leaf_probs[sample_idx, leaf_idx] = pathlogp.exp().sum(dim=0) / x[sample_idx].shape[0]
                         leaf_idx += 1
                 this_level = next_level
 
         loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss'] + output['init_reg_loss']
+        #self.register_nan_hook(output['size_reg_loss'], string='size reg')
+        #self.register_nan_hook(output['ref_reg_loss'], string='reference reg')
+        #self.register_nan_hook(output['init_reg_loss'], string='init_reg')
         if use_hard_proportions:
             output['leaf_probs'] = torch.tensor(self.get_hard_proportions(x)[:, np.newaxis], dtype=torch.float32).cuda()
             output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
@@ -837,8 +992,6 @@ class ModelTree(nn.Module):
 #                                             output['leaf_probs'][sample_idx][0] / sum(y)
 #        output['loss'] = loss + output['emp_reg_loss']
 
-        # Note: it doesn't look like this is implemented for more than one leaf node!
-        # replacing with torch sum should fix this
         if y is not None:
             pos_mean = 0.
             neg_mean = 0.
@@ -853,6 +1006,8 @@ class ModelTree(nn.Module):
             output['feature_diff_reg'] = self.feature_diff_penalty * \
                                          -torch.log((((1./(len(y) - sum(y))) * neg_mean - (1./(sum(y))) * pos_mean))**2)
             loss = loss + output['feature_diff_reg']
+            #self.register_nan_hook(output['feature_diff_reg'], string='feature diff')
+            #self.register_nan_hook(output['emp_reg_loss'], string='emptiness')
 
                 #else:
                 #    output['emp_reg_loss'] = output['emp_reg_loss'] + self.positive_box_penalty * \
@@ -873,13 +1028,14 @@ class ModelTree(nn.Module):
                 loss = loss + output['log_loss']
             # add regularization on the number of cells fall into the leaf gate of negative samples;
         output['loss'] = loss
+        #self.register_nan_hook(loss, 'total loss')
+        #print(self.get_flattened_gates_numbers())
         #print(loss.requires_grad)
         #hard_props = self.get_hard_proportions(x)
         #soft_props = output['leaf_probs']
         #to_print = [(hard_prop, soft_prop.cpu().detach().numpy()[0]) for hard_prop, soft_prop in zip(hard_props, soft_props)]
         #print(to_print)
         return output
-
 
 class ModelForest(nn.Module):
 

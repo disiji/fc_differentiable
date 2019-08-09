@@ -214,7 +214,7 @@ class Cll4d1pInput(CLLInputBase):
 
     def _normalize_(self):
         self._normalize_data_tr_and_nested_list()
-        if self.hparams['test_size'] == 0 and (self.split_fold_idxs is None):
+        if self.hparams['test_size'] == 0 and ((self.split_fold_idxs is None) and (not self.hparams['use_out_of_sample_eval_data'])):
             self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
             self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
         else:
@@ -253,7 +253,7 @@ class Cll4d1pInput(CLLInputBase):
             self.init_tree = None
 
     def split(self, random_state=123):
-        if (self.hparams['test_size'] == 0.) and (self.split_fold_idxs is None):
+        if (self.hparams['test_size'] == 0.) and ((self.split_fold_idxs is None) and (not self.hparams['use_out_of_sample_eval_data'])):
             self.x_train = self.x_list
             self.y_train = self.y_list
             self.x_eval = None
@@ -261,6 +261,29 @@ class Cll4d1pInput(CLLInputBase):
             
             ##self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
             ##self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
+        elif self.hparams['use_out_of_sample_eval_data']:
+            with open(self.hparams['out_of_sample_eval_data'], 'rb') as f:
+                self.x_eval = pickle.load(f)
+            with open(self.hparams['out_of_sample_eval_labels'], 'rb') as f:
+                self.y_eval = pickle.load(f)
+            # in this case both x_list and y_list start out as just the training data, ie all of the data we used for our CV results etc, and not the out of sample data
+            self.idxs_train = np.arange(len(self.x_list))
+            self.idxs_eval = np.arange(len(self.x_list), len(self.x_list) + len(self.x_eval))
+            self.sample_ids = np.arange(len(self.x_list) + len(self.x_eval))
+            
+
+            self.x_list.extend(self.x_eval)
+            self.y_list.extend(self.y_eval)
+            self.x_train = [self.x_list[idx] for idx in self.idxs_train]
+            self.y_train = [self.y_list[idx] for idx in self.idxs_train]
+            # double check that I didnt accidentally put the oos data into train
+            # first assert to make sure this works with floats properly
+            assert(np.array_equal(self.x_train[0], self.x_train[0]))
+            for x_ev in self.x_eval:
+                for x_tr in self.x_train:
+                    assert(not(np.array_equal(x_ev, x_tr)))
+            print('%d samples in training data and %d samples in eval' %(len(self.x_train), len(self.x_eval)))
+
         elif self.split_fold_idxs is None:
                 # Note validation ids are now from 0-len(val) and the old data ids
                 # will be matched by their offset from len(val) -> len(val) + len(data_ids) -1
@@ -279,7 +302,7 @@ class Cll4d1pInput(CLLInputBase):
                 with open(self.augment_data_paths['Y'], 'rb') as f:
                     augment_y_list = pickle.load(f)
                 augment_ids = np.arange(len(augment_x_list))
-                self.idxs_train = np.concatenate([self.idxs_train, augment_ids])
+                self.idxs_train = np.concatenate([self.idxs_train, len(self.sample_ids) + augment_ids])
                 self.x_train.extend(augment_x_list)
                 self.y_train.extend(augment_y_list)
         else:
@@ -293,6 +316,15 @@ class Cll4d1pInput(CLLInputBase):
 
             self.x_eval = [self.x_list[idx] for idx in self.split_fold_idxs[1]]
             self.y_eval = [self.y_list[idx] for idx in self.split_fold_idxs[1]]
+            if not(self.augment_data_paths is None):
+                with open(self.augment_data_paths['X'], 'rb') as f:
+                    augment_x_list = pickle.load(f)
+                with open(self.augment_data_paths['Y'], 'rb') as f:
+                    augment_y_list = pickle.load(f)
+                augment_ids = np.arange(len(augment_x_list))
+                self.idxs_train = np.concatenate([self.idxs_train, len(self.sample_ids) + augment_ids])
+                self.x_train.extend(augment_x_list)
+                self.y_train.extend(augment_y_list)
                 
             ##self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
             ##self.x_eval = [torch.tensor(_, dtype=torch.float32) for _ in self.x_eval]
@@ -351,6 +383,21 @@ class Cll8d1pInput(Cll4d1pInput):
                 on_cuda_list_x_all.append(self.x[i].cuda())
             self.x = on_cuda_list_x_all
             self.y = self.y.cuda()
+
+    '''
+    filter out training data which the filter model is uncertain about
+    '''
+    def filter_samples_with_large_uncertainty(self, model_tree_filter, minimum_samples_frac_left=1/3):
+        output = model_tree_filter(self.x_train, self.y_train)
+        probs_pos = output['preds']
+        filter_idxs = [i for i, prob in enumerate(probs_pos) if torch.abs(prob - 0.5) <= hparams['data_filtering_thresh']]
+        if len(filter_idxs)/len(self.x_train) < (1. - minimum_samples_frac_left):
+            self.x_train = [self.x_train[i] for i in filter_idxs]
+            self.y_train = [self.y_train[i] for i in filter_idxs]
+
+        
+
+
     def _load_data_(self, hparams):
         X_DATA_PATH = hparams['data']['features_path']
         Y_DATA_PATH = hparams['data']['labels_path']

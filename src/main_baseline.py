@@ -1,12 +1,26 @@
 from utils.BaselineParamsParser import BaselineParamsParser
 from utils.Flowsom import Flowsom
 from utils.KMeans import KMeans
+import time
+import numpy as np
+
+SEEDS = np.concatenate([np.arange(51, 72) + 1, np.arange(29) + 1], axis=0)
+
+NUM_SEEDS = 10
+
 
 def main(path_to_params):
+
+    start = time.time()
     parser = BaselineParamsParser(path_to_params)
     params = parser.parse_params()
-    # abstract the following into a factory to make
-    # cleaner
+#    if params['use_model_CV_seeds']:
+#        seeds = SEEDS
+#    else:
+#        seeds = np.arange(0, NUM_SEEDS)
+#    for random_seed in  seeds:
+        # abstract the following into a factory to make
+        # cleaner
     if params['clustering_type'] == 'flowsom':
         model = Flowsom(
                 params['path_to_data_csv'],
@@ -17,11 +31,12 @@ def main(path_to_params):
         model = \
             KMeans(
                 params['path_to_data_csv'],
-                params['kmeans_params']
+                params['kmeans_params'],
+                random_state=params['random_seed']
             )
     else:
         raise ValueError('Model type not recognized')
-
+    print('Fitting model...')
     model.fit()
     print('Model fitting complete')
     model.predict_all_samples()
@@ -30,6 +45,7 @@ def main(path_to_params):
     print('Training Accuracy is %.3f' %tr_acc)
 
 
+    print('Total time taken: %d seconds' %(time.time() - start))
 
 
 #def main(path_to_params):
@@ -54,7 +70,8 @@ def main(path_to_params):
 
 
 if __name__ == '__main__':
-    path_to_params = '../configs/testing_kmeans.yaml'
+    path_to_params = '../configs/testing_flowsom.yaml'
+    #path_to_params = '../configs/testing_kmeans.yaml'
     main(path_to_params)
 
 

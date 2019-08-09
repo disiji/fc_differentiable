@@ -225,9 +225,12 @@ def avg_results(results_path):
     return {'avg_acc' : sum(accs)/len(accs), 
             'avg_log_loss' :sum(log_losses)/len(log_losses)}
 
-def make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hparams):
+def make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hparams, savepath=None):
     concatenated_data = make_data_with_dafi_gate_flags_and_ids(path_to_hparams)
-    savepath = '../data/concatenated_8d_data_with_dafi_filtering_indicators.csv'
+    if savepath:
+        savepath = savepath
+    else:
+        savepath = '../data/concatenated_8d_data_with_dafi_filtering_indicators.csv'
     write_concatenated_8d_data_with_dafi_gate_flags_and_ids(concatenated_data, savepath)
 
     
@@ -476,8 +479,9 @@ if __name__ == '__main__':
     #combine_results_into_one_csv('../output/logreg_to_conv_grid_search', '../output/agg_results_logreg_to_conv_gs2', '../data/cll/y_dev_4d_1p.pkl', corner_reg_grid=[0.001, 0.050], gate_size_reg_grid=[0.25, 0.5], decimal_points_in_dir_name=3)
     #combine_results_into_one_csv('../output/two_phase_logreg_to_conv_grid_search_gate_size=', '../output/agg_results_two_phase', '../data/cll/y_dev_4d_1p.pkl', corner_reg_grid=[0.00], gate_size_reg_grid= [0., 0.25, 0.5, 0.75, 1., 1.25, 1.5, 1.75, 2.])
     path_to_hparams = '../configs/testing_overlaps.yaml'
-    #make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hparams)
-    write_ranked_features_model_dafi(path_to_hparams)
+    savepath = '../data/cll/8d_FINAL/x_dev.csv'
+    make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hparams, savepath)
+    #write_ranked_features_model_dafi(path_to_hparams)
 
     
 

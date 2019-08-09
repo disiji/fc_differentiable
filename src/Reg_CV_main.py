@@ -67,7 +67,7 @@ DEV_DATA_PATHS = {
     }
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
-    torch.cuda.set_device(1)
+    torch.cuda.set_device(hparams['device'])
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -81,80 +81,81 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
     folds = KFold(n_splits=hparams['n_folds_for_Reg_CV'])
     
     # doesn't split at all here since hparams[test_size] = 0 in matching yaml file
-    for init_reg_penalty, negative_box_penalty in zip(hparams['init_reg_grid'], hparams['negative_box_grid']):
-        print('Init reg: %.4f, Neg reg: %.4f' %(init_reg_penalty, negative_box_penalty))
-        hparams['negative_box_penalty'] = negative_box_penalty
-        hparams['init_reg_penalty'] = init_reg_penalty
-        default_exp_name_for_outer_loop = default_exp_name + '_neg_box_=%.4f_init_reg=%.4f' %(negative_box_penalty, init_reg_penalty)
-        input_no_split = Cll8d1pInput(hparams)
-        for fold_idx, (tr_idxs, te_idxs) in enumerate(folds.split(input_no_split.x_list)): 
-            start_time = time.time()
-            cll_1p_full_input = Cll8d1pInput(hparams, split_fold_idxs=[tr_idxs, te_idxs])
-            hparams['experiment_name'] = default_exp_name_for_outer_loop + '_fold%d' %fold_idx
-            if not os.path.exists('../output/%s' % hparams['experiment_name']):
-                os.makedirs('../output/%s' % hparams['experiment_name'])
-            savedir = '../output/%s/' %hparams['experiment_name']
-            if not(os.path.exists(savedir)):
-                os.mkdir(savedir)
-            
+    for diff_reg_penalty in hparams['feature_diff_grid']:
+        for negative_box_penalty in hparams['negative_box_grid']:
+            print('Diff reg: %.4f, Neg reg: %.4f' %(diff_reg_penalty, negative_box_penalty))
+            hparams['negative_box_penalty'] = negative_box_penalty
+            hparams['feature_diff_penalty'] = diff_reg_penalty
+            default_exp_name_for_outer_loop = default_exp_name + '_neg_box_=%.4f_feat_diff=%.4f' %(negative_box_penalty, diff_reg_penalty)
+            input_no_split = Cll8d1pInput(hparams)
+            for fold_idx, (tr_idxs, te_idxs) in enumerate(folds.split(input_no_split.x_list)):
+                start_time = time.time()
+                cll_1p_full_input = Cll8d1pInput(hparams, split_fold_idxs=[tr_idxs, te_idxs])
+                hparams['experiment_name'] = default_exp_name_for_outer_loop + '_fold%d' %fold_idx
+                if not os.path.exists('../output/%s' % hparams['experiment_name']):
+                    os.makedirs('../output/%s' % hparams['experiment_name'])
+                savedir = '../output/%s/' %hparams['experiment_name']
+                if not(os.path.exists(savedir)):
+                    os.mkdir(savedir)
+                
 
-            dafi_tree = ModelTree(cll_1p_full_input.reference_tree,
-                                  logistic_k=hparams['logistic_k_dafi'],
-                                  negative_box_penalty=hparams['negative_box_penalty'],
-                                  positive_box_penalty=hparams['positive_box_penalty'],
-                                  corner_penalty=hparams['corner_penalty'],
-                                  gate_size_penalty=hparams['gate_size_penalty'],
-                                  init_tree=None,
-                                  loss_type=hparams['loss_type'],
-                                  gate_size_default=hparams['gate_size_default'])
+                dafi_tree = ModelTree(cll_1p_full_input.reference_tree,
+                                      logistic_k=hparams['logistic_k_dafi'],
+                                      negative_box_penalty=hparams['negative_box_penalty'],
+                                      positive_box_penalty=hparams['positive_box_penalty'],
+                                      corner_penalty=hparams['corner_penalty'],
+                                      gate_size_penalty=hparams['gate_size_penalty'],
+                                      init_tree=None,
+                                      loss_type=hparams['loss_type'],
+                                      gate_size_default=hparams['gate_size_default'])
 
-            model_tree = ModelTree(cll_1p_full_input.reference_tree,
-                                   logistic_k=hparams['logistic_k'],
-                                   regularisation_penalty=hparams['regularization_penalty'],
-                                   negative_box_penalty=hparams['negative_box_penalty'],
-                                   positive_box_penalty=hparams['positive_box_penalty'],
-                                   corner_penalty=hparams['corner_penalty'],
-                                   init_reg_penalty=hparams['init_reg_penalty'],
-                                   feature_diff_penalty=hparams['feature_diff_penalty'],
-                                   gate_size_penalty=hparams['gate_size_penalty'],
-                                   init_tree=cll_1p_full_input.init_tree,
-                                   loss_type=hparams['loss_type'],
-                                   gate_size_default=hparams['gate_size_default'],
-                                   neg_proportion_default = hparams['neg_proportion_default'],
-                                   node_type = hparams['node_type']
-                                   )
+                model_tree = ModelTree(cll_1p_full_input.reference_tree,
+                                       logistic_k=hparams['logistic_k'],
+                                       regularisation_penalty=hparams['regularization_penalty'],
+                                       negative_box_penalty=hparams['negative_box_penalty'],
+                                       positive_box_penalty=hparams['positive_box_penalty'],
+                                       corner_penalty=hparams['corner_penalty'],
+                                       init_reg_penalty=hparams['init_reg_penalty'],
+                                       feature_diff_penalty=hparams['feature_diff_penalty'],
+                                       gate_size_penalty=hparams['gate_size_penalty'],
+                                       init_tree=cll_1p_full_input.init_tree,
+                                       loss_type=hparams['loss_type'],
+                                       gate_size_default=hparams['gate_size_default'],
+                                       neg_proportion_default = hparams['neg_proportion_default'],
+                                       node_type = hparams['node_type']
+                                       )
 
-            if torch.cuda.is_available():
-                model_tree.cuda()
-                dafi_tree.cuda()
+                if torch.cuda.is_available():
+                    model_tree.cuda()
+                    dafi_tree.cuda()
 
-            model_tree, train_tracker_m, eval_tracker_m, run_time, model_checkpoint_dict = \
-                run_train_full_batch_logreg_to_conv(hparams, cll_1p_full_input, model_tree, model_checkpoint=model_checkpoint)
-            dafi_tree, train_tracker_d, eval_tracker_d = run_train_dafi_logreg_to_conv(dafi_tree, hparams, cll_1p_full_input)
-
-
-
-            trackers_dict = {
-                    'tracker_train_m': train_tracker_m,
-                    'tracker_eval_m': eval_tracker_m,
-                    'tracker_train_d': train_tracker_d,
-                    'tracker_eval_d': eval_tracker_d
-            }
-            run_write_full_output_for_CV(
-                model_tree,
-                dafi_tree,
-                cll_1p_full_input,
-                trackers_dict,
-                hparams,
-                model_checkpoint_dict
-            )
+                model_tree, train_tracker_m, eval_tracker_m, run_time, model_checkpoint_dict = \
+                    run_train_full_batch_logreg_to_conv(hparams, cll_1p_full_input, model_tree, model_checkpoint=model_checkpoint)
+                dafi_tree, train_tracker_d, eval_tracker_d = run_train_dafi_logreg_to_conv(dafi_tree, hparams, cll_1p_full_input)
 
 
 
+                trackers_dict = {
+                        'tracker_train_m': train_tracker_m,
+                        'tracker_eval_m': eval_tracker_m,
+                        'tracker_train_d': train_tracker_d,
+                        'tracker_eval_d': eval_tracker_d
+                }
+                run_write_full_output_for_CV(
+                    model_tree,
+                    dafi_tree,
+                    cll_1p_full_input,
+                    trackers_dict,
+                    hparams,
+                    model_checkpoint_dict,
+                    device_data=hparams['device']
+                )
+
+        
 
 
 if __name__ == '__main__':
-    yaml_filename = '../configs/Reg_CV.yaml'
+    yaml_filename = '../configs/Reg_CV_device1.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)

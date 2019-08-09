@@ -868,6 +868,7 @@ def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None,
 
     if torch.cuda.is_available():
         model.to(device=device_data)
+        dafi_tree.to(device=device_data)
     data_x_tr_pos = [
             x for idx, x in enumerate(full_data)
             if full_labels[idx] == 1.
