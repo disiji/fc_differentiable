@@ -233,8 +233,46 @@ def make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hpa
         savepath = '../data/concatenated_8d_data_with_dafi_filtering_indicators.csv'
     write_concatenated_8d_data_with_dafi_gate_flags_and_ids(concatenated_data, savepath)
 
-    
 
+def make_and_write_catted_data(path_to_x_list, path_to_y_list, savepath):
+    catted_data = make_catted_data(path_to_x_list, path_to_y_list)
+    write_catted_data(catted_data, savepath)
+    return catted_data
+
+def write_catted_data(catted_data, savepath):
+
+    COL_NAMES = (
+                    'FSC-A',
+                    'SSC-H',
+                    'CD45',
+                    'SSC-A',
+                    'CD5',
+                    'CD19',
+                    'CD10',
+                    'CD79b',
+                    'sample_ids',
+                    'labels'
+                )
+
+    with open(savepath, 'w') as f:
+        f.write('%s, %s, %s, %s, %s, %s, %s, %s, %s, %s\n' %COL_NAMES)
+        for cell_row in catted_data:
+            f.write('%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\n' %tuple(cell_row))
+    
+def make_catted_data(path_x_list, path_y_list):
+    with open(path_x_list, 'rb') as f:
+        x_list = pickle.load(f)
+    with open(path_y_list, 'rb') as f:
+        y_list = pickle.load(f)
+
+    for sample_id, (x, y) in enumerate(zip(x_list, y_list)):
+        x_with_sample_id = np.hstack([x, sample_id * np.ones([x.shape[0], 1])])
+        x_with_sample_id_and_label = np.hstack([x_with_sample_id, y * np.ones([x.shape[0], 1])])
+        if sample_id == 0.:
+            catted_data = x_with_sample_id_and_label
+        else:
+            catted_data = np.concatenate([catted_data, x_with_sample_id_and_label])
+    return catted_data
 
 def write_concatenated_8d_data_with_dafi_gate_flags_and_ids(concatenated_data, savepath):
     COL_NAMES = (
@@ -478,8 +516,8 @@ if __name__ == '__main__':
     #combine_results_into_one_csv('../output/logreg_to_conv_grid_search', '../output/agg_results_logreg_to_conv_gs1', '../data/cll/y_dev_4d_1p.pkl')
     #combine_results_into_one_csv('../output/logreg_to_conv_grid_search', '../output/agg_results_logreg_to_conv_gs2', '../data/cll/y_dev_4d_1p.pkl', corner_reg_grid=[0.001, 0.050], gate_size_reg_grid=[0.25, 0.5], decimal_points_in_dir_name=3)
     #combine_results_into_one_csv('../output/two_phase_logreg_to_conv_grid_search_gate_size=', '../output/agg_results_two_phase', '../data/cll/y_dev_4d_1p.pkl', corner_reg_grid=[0.00], gate_size_reg_grid= [0., 0.25, 0.5, 0.75, 1., 1.25, 1.5, 1.75, 2.])
-    path_to_hparams = '../configs/testing_overlaps.yaml'
-    savepath = '../data/cll/8d_FINAL/x_dev.csv'
+    path_to_hparams = '../configs/baseline_plot.yaml'
+    savepath = '../data/cll/8d_FINAL/x_all.csv'
     make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hparams, savepath)
     #write_ranked_features_model_dafi(path_to_hparams)
 

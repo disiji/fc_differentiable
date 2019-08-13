@@ -465,7 +465,7 @@ class Cll8d1pInput(Cll4d1pInput):
         elif hparams['init_type'] == 'heuristic_init':
             
             self.init_nested_list = self._get_heuristic_init()
-        elif hparams['init_type'] == 'midlle_init':
+        elif hparams['init_type'] == 'middle_init':
             self.init_nested_list = self._get_middle_plots_init_nested_list_()
         else:
             raise ValueError('init type not recognized')
@@ -709,6 +709,139 @@ class Cll8d1pInput(Cll4d1pInput):
     def _get_middle_plots_flattened_list_(self):
         return [[1003., 3011., 1024., 3071.],[1083., 3091., 1024., 3071.],[1023., 3069., 1024., 3072.],[1024., 3071., 1026, 3078.]]
 
+class SynthInput(Cll8d1pInput):
+    def __init__(self, hparams, random_state=0, augment_data_paths=None, split_fold_idxs=None):
+        self.hparams = hparams
+        # used to include dev data in training but not testing
+        self.augment_data_paths = augment_data_paths
+        self.random_state = random_state
+        self.features = ['M1', 'M2', 'M3','M4', 'M5', 'M6','M7', 'M8']
+        self.features_full =['M1', 'M2', 'M3','M4', 'M5', 'M6','M7', 'M8'] 
+        self.feature2id = dict((self.features[i], i) for i in range(len(self.features)))
+        self.split_fold_idxs = split_fold_idxs #0 for train, 1 for test
+        self._load_data_(hparams)
+        self.unnormalized_x_list_of_numpy = deepcopy(self.x_list)
+        self.y_numpy = deepcopy(self.y_list)
+        self.reference_nested_list = self._get_reference_nested_list_()
+        #if hparams['init_type'] == 'heuristic_init':
+        #    self._normalize_()
+        #    self._get_init_nested_list_(hparams)
+        #else:
+        #    self._get_init_nested_list_(hparams)
+        #    self._normalize_()
+        self.split(random_state=random_state)
+        self._normalize_()
+        print(self.reference_nested_list)
+        self._get_init_nested_list_(hparams)
+        self._construct_()
+
+        self.x = [torch.tensor(_, dtype=torch.float32) for _ in self.x_list]
+        self.y = torch.tensor(self.y_list, dtype=torch.float32)
+
+        on_cuda_list_x_all = []
+        if torch.cuda.is_available():
+            for i in range(len(self.x)):
+                on_cuda_list_x_all.append(self.x[i].cuda())
+            self.x = on_cuda_list_x_all
+            self.y = self.y.cuda()
+
+    def get_gate_data_ids(self):
+        gate_data_ids = \
+            [
+                [self.feature2id['M1'], self.feature2id['M2']],
+                [self.feature2id['M3'], self.feature2id['M4']],
+                [self.feature2id['M5'], self.feature2id['M6']],
+                [self.feature2id['M7'], self.feature2id['M8']],
+            ]
+        return gate_data_ids
+
+    def _get_heuristic_init(self):
+        heuristic_initializer = HeuristicInitializer(
+            self.hparams['node_type'],
+            self.get_gate_data_ids(),
+            np.concatenate(self.get_pos_tr_data(return_numpy=True)),
+            np.concatenate(self.get_neg_tr_data(return_numpy=True)),
+            num_gridcells_per_axis = self.hparams['heuristic_init']['num_gridcells_per_axis'],
+            greedy_filtering = False,
+            consider_all_gates=self.hparams['heuristic_init']['consider_all_gates']
+        )
+        flat_gates = heuristic_initializer.get_heuristic_gates() 
+        self.flat_heuristic_gates = flat_gates
+        return self._convert_flattened_list_to_nested_(flat_gates)
+
+    def _get_reference_nested_list_(self):
+        reference_nested_list = \
+            [
+                [[u'M1', 0, 1.75 ],  [u'M2', 0, 1.75]],
+                [   [[[u'M3', 0, 1.75], [u'M4', 0, 1.75]], []], #left branch
+            
+                    [ 
+                        
+                            [[u'M5', 1.75, 3.25], [u'M6', 0, 1.75]], 
+
+                            [
+                                [[[u'M7', 1.75, 3.25], [u'M8', 1.75, 3.25]], []]
+                            ]
+                        
+
+    
+                    ]
+                    
+                ]
+
+            ]
+        return reference_nested_list
+    def _convert_flattened_list_to_nested_(self, flat_gates):
+        gate1, gate2, gate3, gate4 = flat_gates
+        converted_nested_list = \
+        [
+            [[u'M1', gate1[0], gate1[1] ],  [u'M2', gate1[2], gate1[3]]],
+            [[[[u'M3', gate2[0], gate2[1]], [u'M4', gate2[2], gate2[3]]], []], #left branch
+            
+                    [ 
+                        
+                            [[u'M5', gate3[0], gate3[1]], [u'M6', gate3[2], gate3[3]]], 
+
+                            [
+                                [[[u'M7', gate4[0], gate4[1]], [u'M8', gate4[2], gate4[3]]], []]
+                            ]
+                            
+
+        
+                        ]
+                        
+            ]
+
+        ]
+        
+        return converted_nested_list
+
+
+    def _load_data_(self, hparams):
+        X_DATA_PATH = hparams['data']['features_path']
+        Y_DATA_PATH = hparams['data']['labels_path']
+
+        with open(X_DATA_PATH, 'rb') as f:
+            self.x_list = pickle.load(f)
+        with open(Y_DATA_PATH, 'rb') as f:
+            self.y_list = pickle.load(f)
+
+        # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
+        # y: a list of labels; 1 is CLL, 0 is healthy
+        if self.hparams['load_from_pickle']:
+            with open(X_DATA_PATH, 'rb') as f:
+                self.x_list = pickle.load(f)
+            with open(Y_DATA_PATH, 'rb') as f:
+                self.y_list = pickle.load(f)
+
+        else:
+            x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
+            x_8d = dh.filter_cll_8d_pb1(x)
+            with open(DATA_DIR + 'filtered_8d_1p_x_list.pkl', 'wb') as f:
+                pickle.dump(x_8d, f)
+            with open(DATA_DIR + 'y_1p_list.pkl', 'wb') as f:
+                pickle.dump(y, f)
+            self.x_list, self.y_list = x_8d, y
 class Cll4d2pInput(CLLInputBase):
     """
     The basic idea is to replace self.feaures, self.features_full, self.feature2id, self.x_list, self.y_list etc. with

@@ -6,9 +6,10 @@ data_list: list of numpy arrays of data per sample
 '''
 class CellOverlaps:
 
-    def __init__(self, model1, model2, data_list):
+    def __init__(self, model1, model2, data_list, is_4chain=False):
         self.model1 = model1
         self.model2 = model2
+        self.is_4chain = is_4chain
         self.data_list_with_ids = self._init_data_with_ids(data_list)
 
     '''
@@ -30,8 +31,12 @@ class CellOverlaps:
         overlap_diagnostics = []
         for data in self.data_list_with_ids:
             # leaf data here means inside all gates including leaf gate
-            model1_leaf_data = self.model1.get_data_inside_all_gates(data)
-            model2_leaf_data = self.model2.get_data_inside_all_gates(data)
+            if self.is_4chain:
+                model1_leaf_data = self.model1.get_data_inside_all_gates_4chain(data)
+                model2_leaf_data = self.model2.get_data_inside_all_gates_4chain(data)
+            else:
+                model1_leaf_data = self.model1.get_data_inside_all_gates(data)
+                model2_leaf_data = self.model2.get_data_inside_all_gates(data)
             num_overlap = self.compute_overlaps_single_data_array(
                 model1_leaf_data,
                 model2_leaf_data,

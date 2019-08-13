@@ -17,7 +17,6 @@ class Flowsom:
         self.df = deepcopy(self._fsom.df)
         self.num_samples = self.df[['sample_ids']].nunique().values[0]
         self.sample_ids = self.df.sample_ids.unique().astype(int)
-        print(self.sample_ids)
         self.params = model_params
         self.random_seed = random_seed
         self.labels = self.get_labels()
@@ -39,7 +38,6 @@ class Flowsom:
             if_fcs=False,
             seed=self.random_seed #check that this seed is used in meta clustering too!!
         )
-        print('SOM fit')
         
         meta_cluster_params = self.params['meta_cluster_params']
         algorithm = self.get_algorithm_class()
@@ -49,12 +47,10 @@ class Flowsom:
                 meta_cluster_params['max_k'],
                 meta_cluster_params['iters_per_random_restart']
         )
-        print('Meta clusters fit')
     
         self.construct_sample_level_proportions()
-        self.logistic_regressor = LogisticRegression(C=1e10)
+        self.logistic_regressor = LogisticRegression(C=self.params['L1_logreg_penalty'],penalty='l1')
         self.fit_logistic_regressor()
-        print('Logistic Regressor fit')
 
     def get_algorithm_class(self):
         if self.params['meta_cluster_params']['algorithm'] == 'AgglomerativeClustering':
@@ -67,9 +63,7 @@ class Flowsom:
         self.proportions = -1 * np.ones([self.num_samples, self._fsom.bestk])
         for sample_id in self.sample_ids:
             sample = self._fsom.df.loc[self.df['sample_ids'] == sample_id]
-            self.proportions[sample_id] = self.get_proportions_single_sample(sample)
-        print(self.proportions)
-        print(self.labels)
+            self.proportions[sample_id - 1] = self.get_proportions_single_sample(sample)
 
     def get_proportions_single_sample(self, sample):
         proportions = np.zeros([self._fsom.bestk])
@@ -84,11 +78,18 @@ class Flowsom:
         self.logistic_regressor.fit(self.proportions, self.labels)
 
     def predict_single_testing_sample(self, sample):
+        counts = np.zeros([1, self._fsom.bestk])
+#        closest_nodes_in_som = self._fsom.map_som.winner(sample.reshape([-1, 1, 1, 8]))
+#        meta_clusters = self._fsom.map_class[closest_nodes_in_som]
+#        counts = np.bincount(meta_clusters)
         for cell in sample:
             closest_node_in_som = self._fsom.map_som.winner(cell)
-            meta_cluster = self._fsom.map_class(closest_node_in_som)
-        proportions = self.get_proportions_single_sample(sample)
+            meta_cluster = self._fsom.map_class[closest_node_in_som]
+            counts[:, meta_cluster] = counts[:, meta_cluster] + 1
+        proportions = counts/np.sum(counts)
         return self.logistic_regressor.predict(proportions)
+
+
 
     def predict_all_samples(self):
         self.predictions = self.logistic_regressor.predict(self.proportions)
@@ -98,7 +99,15 @@ class Flowsom:
        #     predictions.append(pred)
        # self.predictions = np.array(predictions)
         return self.predictions
+    
+    def predict_testing_samples(self, testing_samples):
+        predictions = []
+        for sample in testing_samples:
+            predictions.append(self.predict_single_testing_sample(sample))
+        print(predictions)
+        return np.concatenate(predictions).reshape(-1, 1)
 
+    
     def get_training_accuracy(self):
         tr_acc = 1./(self.num_samples) * np.sum(self.predictions ==  self.labels)
         return tr_acc

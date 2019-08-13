@@ -29,7 +29,6 @@ class KMeans:
                 sample = sample_df.values[np.random.permutation(len(sample_df))][0: int(len(sample_df) * model_params['subsample_frac'])]
             else:
                 sample = sample_df.values[np.random.permutation(len(sample_df))][0: model_params['min_number_of_cells']]
-            print(sample.shape) 
             data_by_sample.append(sample[:, 0:8])
             labels.append(sample_df['labels'].values[0])
 
@@ -43,13 +42,13 @@ class KMeans:
         self.proportions = self._construct_proportions()
         self.logistic_regressor.fit(self.proportions, self.labels)
 
-    def _construct_proportions(self, data_for_getting_proportions=None):
+    def _construct_proportions(self, testing_data=None):
         proportions = []
-        if data_for_getting_proportions is None:
+        if testing_data is None:
             for sample in self.data_by_sample:
                 proportions.append(self.get_single_sample_proportion(sample))
         else:
-            for sample in data_for_getting_proportions:
+            for sample in testing_data:
                 proportions.append(self.get_single_sample_proportion(sample))
         return proportions
 
@@ -72,9 +71,9 @@ class KMeans:
         prediction = self.logistic_regressor.predict(proportion)
         return prediction
 
-    def predict_testing_samples(self, concatenated_samples):
-        testing_proportions = self._construct_proportions(testing_data=concatenated_samples)
-        self.testing_predictions = self.logistic_regressor(testing_proportions)
+    def predict_testing_samples(self, samples_list):
+        testing_proportions = self._construct_proportions(testing_data=samples_list)
+        self.testing_predictions = self.logistic_regressor.predict(testing_proportions)
         return self.testing_predictions
 
     def get_training_accuracy(self):

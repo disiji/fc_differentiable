@@ -617,6 +617,13 @@ class ModelTree(nn.Module):
     def get_data_inside_all_gates(self, data):
         return self.filter_data(data)[-1]
     
+    def get_data_inside_all_gates_4chain(self, data):
+        nodes = self.get_nodes_four_chain()
+        gates = [ModelTree.get_gate(node) for node in nodes]
+        for node in nodes:
+            data = self.filter_data_at_single_node(data, node)
+        return data
+
 
 
     def filter_data(self, data):
@@ -660,6 +667,56 @@ class ModelTree(nn.Module):
                 node_stack.append(child)
 
         return outputs
+
+    def fix_dictionary_4chain(self):
+        print('before fixing')
+        print(self.children_dict)
+        fixed_children_dict = nn.ModuleDict()
+        #nodes = self.get_nodes_four_chain_unfixed()
+        nodes = self.get_nodes_four_chain()
+        print(nodes)
+        #order if magic is needed : 0, 2, 3, 1 -> 3, 1, 2, ()
+        fixed_children_dict[str(id(nodes[0]))] = nn.ModuleList([nodes[1]])
+        fixed_children_dict[str(id(nodes[1]))] = nn.ModuleList([nodes[2]])
+        fixed_children_dict[str(id(nodes[2]))] = nn.ModuleList([nodes[3]])
+        fixed_children_dict[str(id(nodes[3]))] = nn.ModuleList()
+        self.children_dict = fixed_children_dict
+        print('After fixing')
+        print(self.get_nodes_four_chain())
+    
+    def get_nodes_synth(self):
+        root = self.root
+        children_dict_values = [value for value in self.children_dict.values()]
+        print(children_dict_values, 'unfixed')
+        
+        for value in children_dict_values:
+            if len(value) == 0:
+                continue
+            # this means were at the first children of root
+            if value[0].gate_dim1 == 2:
+                child1 = value[0]
+                child2 = value[1]
+            elif value[0].gate_dim1 == 6:
+                child3 = value[0]
+
+        #child1 = children_dict_values[1][0]
+        #child2 = children_dict_values[2][0]
+        #child3 = children_dict_values[3][0]
+        return [root, child1, child2, child3]
+
+
+    def fix_children_dict_synth(self):
+        nodes = self.get_nodes_synth()
+        fixed_dict = nn.ModuleDict()
+        fixed_dict[str(id(nodes[0]))] = nn.ModuleList([nodes[1], nodes[2]])
+        fixed_dict[str(id(nodes[1]))] = nn.ModuleList()
+        fixed_dict[str(id(nodes[2]))]= nn.ModuleList([nodes[3]])
+        fixed_dict[str(id(nodes[3]))] = nn.ModuleList()
+        print('Fixed')
+        print(fixed_dict)
+        self.children_dict = fixed_dict
+        
+
     '''
     returns a list of pairs of ids for each gate in depth-first order
     '''
@@ -744,9 +801,10 @@ class ModelTree(nn.Module):
         return dict_copy 
     
 
-    def add(self, reference_tree, init_tree=None):
+    def add(self, reference_tree, init_tree=None, node_idx=-1):
         """
         construct self.children_dict dictionary for all nodes in the tree structure.
+        keys are just ints with lower keys being higher up in the tree
         :param reference_tree:
         :return:
         """
@@ -763,15 +821,18 @@ class ModelTree(nn.Module):
         child_list = nn.ModuleList()
         if init_tree == None:
             for child in reference_tree.children:
-                child_node = self.add(child)
+                node_idx += 1
+                child_node = self.add(child, node_idx)
                 child_list.append(child_node)
         else:
             for _ in range(len(reference_tree.children)):
                 child_ref = reference_tree.children[_]
                 child_init = init_tree.children[_]
-                child_node = self.add(child_ref, child_init)
+                node_idx += 1
+                child_node = self.add(child_ref, child_init, node_idx)
                 child_list.append(child_node)
-        self.children_dict.update({str(id(node)): child_list})
+        #str(id(node)) was old code for saved models from CV results, see fix children dict function
+        self.children_dict.update({node_idx: child_list}) 
         return node
 
     def make_gates_hard(self):
@@ -802,12 +863,33 @@ class ModelTree(nn.Module):
         return np.array(proportions)
 
 
+    #def get_nodes_four_chain(self):
+    #    root = self.root
+    #    children_dict_values = [value for value in self.children_dict.values()]
+    #    #print(children_dict_values, 'fixed')
+    #    child1 = children_dict_values[2][0]
+    #    child2 = children_dict_values[1][0]
+    #    child3 = children_dict_values[0][0]
+    #    return [root, child1, child2, child3]
+
     def get_nodes_four_chain(self):
         root = self.root
         children_dict_values = [value for value in self.children_dict.values()]
-        child1 = children_dict_values[1][0]
-        child2 = children_dict_values[2][0]
-        child3 = children_dict_values[3][0]
+        #print(children_dict_values, 'unfixed')
+        
+        for value in children_dict_values:
+            if len(value) == 0:
+                continue
+            if value[0].gate_dim1 == 6:
+                child3 = value[0]
+            elif value[0].gate_dim1 == 4:
+                child2 = value[0]
+            elif value[0].gate_dim1 == 0:
+                child1 = value[0]
+
+        #child1 = children_dict_values[1][0]
+        #child2 = children_dict_values[2][0]
+        #child3 = children_dict_values[3][0]
         return [root, child1, child2, child3]
 
     #only use if model is a chain of four nodes-this needs to be refactored in a new object probably

@@ -4,6 +4,7 @@ from collections import namedtuple
 import utils.utils_load_data as dh
 import torch.nn.functional as F
 from utils.bayes_gate import ModelTree
+import seaborn as sb
 
 class DataAndGatesPlotter():
 
@@ -18,12 +19,14 @@ class DataAndGatesPlotter():
         dims: the indexes into self.data for which two dimensions
                 a given node uses
     '''
-    def __init__(self, model, data):
+    def __init__(self, model, data, is_4chain=False, color=None):
         self.model = model
         self.data = data
         self.gates = self.construct_gates()
+        print([[gate.low1, gate.upp1, gate.low2, gate.upp2] for gate in self.gates])
         self.filtered_data = self.filter_data_by_model_gates()
         self.dims = self.get_dims()
+        self.color = color
 
         # modification needed to plot reference tree objects
         #ids2features = self.model.referenceTree.ids2features
@@ -130,6 +133,8 @@ class DataAndGatesPlotter():
     def plot_on_axes(self, axes, hparams):
 
         if not (axes.shape[0] == len(self.filtered_data) - 1):
+            print(self.gates)
+            print(len(self.filtered_data))
             raise ValueError('Number of axes must match the number of nodes!')
 
         for node_idx, axis in enumerate(axes):
@@ -138,15 +143,28 @@ class DataAndGatesPlotter():
     # TODO refactor to use a dictionary of plot settings
     # which has a defautlt setting
     def plot_node(self, axis, node_idx, hparams):
-        axis.scatter(
-            self.filtered_data[node_idx][:, self.dims[node_idx][0]],
-            self.filtered_data[node_idx][:, self.dims[node_idx][1]],
-            s=hparams['plot_params']['marker_size'],
-        )
-        if type(self.model.root).__name__ == 'ModelNode' or type(self.model.root).__name__ == 'SquareModelNode':
+        if 'plot_kde_density' in hparams['plot_params']:
+            if hparams['plot_params']['plot_kde_density']:
+                sb.kdeplot(
+                    self.filtered_data[node_idx][:, self.dims[node_idx][0]],
+                    self.filtered_data[node_idx][:, self.dims[node_idx][1]],
+                    ax=axis, cmap='Blues', shade=True, shade_lowest=False
+                )
+        else:
+            axis.scatter(
+                self.filtered_data[node_idx][:, self.dims[node_idx][0]],
+                self.filtered_data[node_idx][:, self.dims[node_idx][1]],
+                s=hparams['plot_params']['marker_size'],
+            )
+#        if type(self.model.root).__name__ == 'ModelNode' or type(self.model.root).__name__ == 'SquareModelNode':
+#            self.plot_gate(axis, node_idx, dashes=(3,1), label='Model')
+#        else:
+#            self.plot_gate(axis, node_idx, color='k', label='DAFI')
+        if self.color is None:
             self.plot_gate(axis, node_idx, dashes=(3,1), label='Model')
         else:
-            self.plot_gate(axis, node_idx, color='k', label='DAFI')
+            self.plot_gate(axis, node_idx, color=self.color, label='DAFI')
+
 
     def plot_only_DAFI_gates_on_axes(self, axes, hparams):
         if not (axes.shape[0] == len(self.filtered_data) - 1):
@@ -156,7 +174,7 @@ class DataAndGatesPlotter():
 
 
 
-    def plot_gate(self, axis, node_idx, color='r', lw=3, dashes=(None, None), label=None):
+    def plot_gate(self, axis, node_idx, color='g', lw=3, dashes=(None, None), label=None):
         gate = self.gates[node_idx]
         axis.plot([gate.low1, gate.low1], [gate.low2, gate.upp2], c=color, 
             label=label, dashes=dashes, linewidth=lw)

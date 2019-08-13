@@ -289,3 +289,7 @@ def run_write_full_output_for_CV(model, dafi_model, input, trackers_dict, hparam
 
     with open('../output/%s/model_checkpoints.pkl' %(experiment_name), 'wb') as f:
             pickle.dump(model_checkpoint_dict, f)
+    with open('../output/%s/tracker_train_m.pkl' %(experiment_name), 'wb') as f:
+            pickle.dump(trackers_dict['tracker_train_m'], f)
+    with open('../output/%s/tracker_eval_m.pkl' %(experiment_name), 'wb') as f:
+            pickle.dump(trackers_dict['tracker_eval_m'], f)
