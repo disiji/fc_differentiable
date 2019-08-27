@@ -1,4 +1,5 @@
 import matplotlib
+import os
 import numpy as np
 import yaml
 import pickle
@@ -17,9 +18,9 @@ import torch.nn as nn
 import torch
 from math import *
 import utils.utils_load_data as dh
-from utils.DataAndGatesPlotter import DataAndGatesPlotter
+from utils.DataAndGatesPlotter import *
 #from main_1p_full import default_hparams
-from  utils.input import Cll8d1pInput
+from  utils.input import *
 from utils.ParameterParser import ParameterParser
 from utils.bayes_gate import ModelTree
 from copy import deepcopy
@@ -1009,6 +1010,25 @@ def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None,
     plt.tight_layout()
 
 
+def run_model_single_iter_pos_and_neg_gates_p1(hparams, path_to_saved_model,  device_data=1):
+    output = {}
+    output['hparams'] = hparams
+    input = CllBothPanelsInput(hparams)
+    output['cll_1p_full_input'] = input
+    output['dafi_tree'] = ModelTreeBoth(input.reference_tree,
+                          logistic_k=hparams['logistic_k_dafi'],
+                          negative_box_penalty=hparams['negative_box_penalty'],
+                          positive_box_penalty=hparams['positive_box_penalty'],
+                          corner_penalty=hparams['corner_penalty'],
+                          gate_size_penalty=hparams['gate_size_penalty'],
+                          init_tree=None,
+                          loss_type=hparams['loss_type'],
+                          gate_size_default=hparams['gate_size_default'])
+    with open(path_to_saved_model, 'rb') as f:
+        output['model'] = pickle.load(f)
+    output['models_per_iteration'] = None
+    make_single_iter_pos_and_neg_gates_plot(output, -10000, device_data=device_data)
+    plt.savefig('../output/%s/pos_and_neg_gates_converged.png' %hparams['experiment_name'])
 def run_model_single_iter_pos_and_neg_gates(hparams, path_to_saved_model,  device_data=1):
     output = {}
     output['hparams'] = hparams
@@ -1375,6 +1395,36 @@ def make_leaf_gate_plots(models_per_iteration, dafi_tree, hparams, data, labels)
     plt.savefig('../output/%s/leaf_plot.png' %(hparams['experiment_name']))
 
 
+def run_both_panels_pos_and_neg_gates(model, hparams, num_cells_to_plot=10000, savename='pos_and_neg_gates_both.png'):
+    input = CllBothPanelsInput(hparams)
+    pos_data = [[x.detach().cpu().numpy() for x in x_both] for i, x_both in enumerate(input.x_list) if input.y_list[i] == 1]
+    pos_data = [np.concatenate([d[0] for d in pos_data]), np.concatenate([d[1] for d in pos_data]) ]
+    pos_data = [d[np.random.permutation(d.shape[0])][0:num_cells_to_plot] for d in pos_data]
+
+    neg_data = [[x.detach().cpu().numpy() for x in x_both] for i, x_both in enumerate(input.x_list) if input.y_list[i] == 0]
+    neg_data = [np.concatenate([d[0] for d in neg_data]), np.concatenate([d[1] for d in neg_data]) ]
+    neg_data = [d[np.random.permutation(d.shape[0])][0:num_cells_to_plot] for d in neg_data]
+    fig_p1, fig_p2 = plot_both_panels_pos_and_neg_gates(model, pos_data, neg_data, hparams)
+    fig_p1.savefig('../output/%s/p1_%s' %(hparams['experiment_name'], savename))
+    fig_p2.savefig('../output/%s/p2_%s' %(hparams['experiment_name'], savename))
+
+def plot_both_panels_pos_and_neg_gates(model, pos_data, neg_data, hparams):
+    plotter_pos = DataAndGatesPlotterBoth(model, pos_data)
+    plotter_neg = DataAndGatesPlotterBoth(model, neg_data)
+    fig_p1, axes_p1 = plt.subplots(4, 2, figsize=(4, 8), sharex=True, sharey=True)
+
+    fig_p2, axes_p2 = plt.subplots(3, 2, figsize=(4, 6), sharex=True, sharey=True)
+
+    pos_axes = np.concatenate([axes_p1[:, 0], axes_p2[:, 0]], axis=0)
+    plotter_pos.plot_on_axes(pos_axes, hparams)
+
+    neg_axes = np.concatenate([axes_p1[:, 1], axes_p2[:, 1]], axis=0)
+    plotter_neg.plot_on_axes(neg_axes, hparams)
+    return fig_p1, fig_p2
+    
+
+
+
 #note: wont work for general tree graph
 def plot_just_leaf(axis, model, data, hparams):
     modelPlotter = DataAndGatesPlotter(model, data)
@@ -1389,6 +1439,33 @@ def plot_data_and_gates(axes, model, data, hparams):
     modelPlotter = DataAndGatesPlotter(model, data)
     modelPlotter.plot_on_axes(axes, hparams) 
 
+
+
+def plot_accs_and_losses(tracker_train_path, tracker_eval_path, num_iterations=200, savefolder='./output'):
+    with open(tracker_train_path, 'rb') as f:
+        tracker_train = pickle.load(f)
+
+    with open(tracker_eval_path, 'rb') as f:
+        tracker_eval = pickle.load(f)
+
+    iterations = np.arange(stop=num_iterations + 1, start=0, step=10)
+
+    plt.plot(iterations, tracker_train.acc, color='tab:orange', label='Train')
+    plt.plot(iterations, tracker_eval.acc, color='tab:blue', label='Test')
+    plt.xlabel('Iterations')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.savefig(os.path.join(savefolder, 'eval_and_tr_accs_final_model.png')  , bbox_inches='tight')
+
+    plt.clf()
+    losses_train = [loss.numpy() for loss in tracker_train.log_loss]
+    losses_eval = [loss.numpy() for loss in tracker_eval.log_loss]
+    plt.plot(iterations, losses_train, color='tab:orange', label='Train')
+    plt.plot(iterations, losses_eval, color='tab:blue', label='Test')
+    plt.xlabel('Iterations')
+    plt.ylabel(r'$l(\theta, \alpha)$')
+    plt.legend()
+    plt.savefig(os.path.join(savefolder, 'eval_and_tr_losses_final_model.png')  , bbox_inches='tight')
 
 
  
@@ -1427,21 +1504,26 @@ def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_th
             print('time taken %d, with loss %.2f' %(time.time() - start, log_loss.detach().item()))
     return model
 if __name__ == '__main__':
-    with open('../../data/cll/x_dev_4d_1p.pkl', 'rb') as f:
-        x_dev_list = pickle.load(f)
+    savefolder = '../output/CV_neg=0.001_diff=0.001_FINAL_OOS_seed0/'
+    tracker_train_path = savefolder + 'tracker_train_m.pkl'
+    tracker_eval_path = savefolder + 'tracker_eval_m.pkl'
 
-    with open('../../data/cll/y_dev_4d_1p.pkl', 'rb') as f:
-        labels= pickle.load(f)
+    plot_accs_and_losses(tracker_train_path, tracker_eval_path, savefolder=savefolder)
+    #with open('../../data/cll/x_dev_4d_1p.pkl', 'rb') as f:
+    #    x_dev_list = pickle.load(f)
+
+    #with open('../../data/cll/y_dev_4d_1p.pkl', 'rb') as f:
+    #    labels= pickle.load(f)
 
 
-    features = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8']
-    feature2id = dict((features[i], i) for i in range(len(features)))
-    x_dev_list, offset, scale = dh.normalize_x_list(x_dev_list)
+    #features = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8']
+    #feature2id = dict((features[i], i) for i in range(len(features)))
+    #x_dev_list, offset, scale = dh.normalize_x_list(x_dev_list)
 
-    get_dafi_gates(offset, scale, feature2id)
-    with open(model_path, 'rb') as f:
-        model = pickle.load(f)
+    #get_dafi_gates(offset, scale, feature2id)
+    #with open(model_path, 'rb') as f:
+    #    model = pickle.load(f)
 
-    DAFI_GATES = get_dafi_gates(offset, scale, feature2id)
+    #DAFI_GATES = get_dafi_gates(offset, scale, feature2id)
 
-    plot_samples_and_gates_cll_4d_dev(x_dev_list, labels, model, DAFI_GATES, cell_sz=cell_sz)
+    #plot_samples_and_gates_cll_4d_dev(x_dev_list, labels, model, DAFI_GATES, cell_sz=cell_sz)

@@ -90,27 +90,34 @@ def make_dev_data_plots():
 
     plot_samples_and_gates_cll_4d_dev(x_dev_list, labels, model, DAFI_GATES, cell_sz=cell_sz)
 
-def make_synth_plot(hparams, model_paths):
+def make_accs_and_losses_final_model():
+    savefolder = '../output/CV_neg=0.001_diff=0.001_FINAL_OOS_seed0/'
+    tracker_train_path = savefolder + 'tracker_train_m.pkl'
+    tracker_eval_path = savefolder + 'tracker_eval_m.pkl'
+
+    plot_accs_and_losses(tracker_train_path, tracker_eval_path, savefolder=savefolder)
+
+def make_synth_plot(hparams, model_paths, cells_to_plot=100000, device=1):
     with open(model_paths['init'], 'rb') as f:
-        model_init = pickle.load(f)
+        model_init = pickle.load(f).cuda(device)
     if hparams['dictionary_is_broken']:
         model_init.fix_children_dict_synth()
     
     with open(model_paths['final'], 'rb') as f:
-        model_final = pickle.load(f)
+        model_final = pickle.load(f).cuda(device)
     if hparams['dictionary_is_broken']:
         model_final.fix_children_dict_synth()
 
     models = {'init': model_init, 'final': model_final}
 
-    synth_input = SynthInput(hparams)
+    synth_input = SynthInput(hparams, device=device)
     data = [x.cpu().detach().numpy() for x in synth_input.x_train]
     data_pos = [x for x, y in zip(data, synth_input.y_train) if y == 1.]
     data_neg = [x for x, y in zip(data, synth_input.y_train) if y == 0.]
     catted_data_pos = np.concatenate(data_pos)
     shuffled_idxs = np.random.permutation(len(catted_data_pos))
-    print('max is', np.max(catted_data_pos[shuffled_idxs][0:10000]))
-    plot_synth_data_with_gates(models, catted_data_pos[shuffled_idxs][0:10000], hparams, {'title': 'Class 1 Results'})
+    print('max is', np.max(catted_data_pos[shuffled_idxs][0:cells_to_plot]))
+    plot_synth_data_with_gates(models, catted_data_pos[shuffled_idxs][0:cells_to_plot], hparams, {'title': 'Class 1 Results'})
     savepath = '../output/%s/synth_gates_pos.png' %hparams['experiment_name']
     plt.tight_layout()
     plt.savefig(savepath, dpi=300, bbox_inches='tight')
@@ -118,7 +125,7 @@ def make_synth_plot(hparams, model_paths):
 
     catted_data_neg = np.concatenate(data_neg)
     shuffled_idxs = np.random.permutation(len(catted_data_neg))
-    plot_synth_data_with_gates(models, catted_data_neg[shuffled_idxs][0:], hparams, {'title': 'Class 2 Results'})
+    plot_synth_data_with_gates(models, catted_data_neg[shuffled_idxs][0:cells_to_plot], hparams, {'title': 'Class 2 Results'})
     savepath = '../output/%s/synth_gates_neg.png' %hparams['experiment_name']
     plt.tight_layout()
     plt.savefig(savepath, dpi=300, bbox_inches='tight')
@@ -127,6 +134,15 @@ def make_synth_plot(hparams, model_paths):
 def make_model_plot(hparams, path_to_model, device):
     # make a run that takes in just a model rather than a model chekcpoint dict
     run_model_single_iter_pos_and_neg_gates(hparams, path_to_model, device_data=device)
+
+def make_model_plots_both_panels(hparams, path_to_model_checkpoints, num_iters=120):
+    with open(path_to_model_checkpoints, 'rb') as f:
+        model_checkpoints = pickle.load(f)
+    model_init = model_checkpoints[0]
+    model_final = model_checkpoints[num_iters]
+    run_both_panels_pos_and_neg_gates(model_init, hparams, savename='pos_and_neg_plots_both_init.png')
+    run_both_panels_pos_and_neg_gates(model_final, hparams, savename='pos_and_neg_plots_both_final.png')
+
 
 def make_dafi_plot(hparams):
     run_dafi_single_iter_pos_and_neg_gates(hparams, device_data=0)
@@ -164,6 +180,11 @@ if __name__ == '__main__':
     #experiment_yaml_file = '../configs/testing_corner_init.yaml'
     #experiment_yaml_file = '../configs/testing_overlaps.yaml'
     #experiment_yaml_file = '../configs/testing_my_heuristic_init.yaml'
+
+    # for both panels plots
+    #path_to_model_checkpoints = '../output/Both_Panels_CV_neg=0.001_diff=0.001_seed1/model_checkpoints.pkl'
+    #yaml_filename = '../configs/both_panels.yaml'
+
     # for dafi/model plots
     #path_to_saved_model = '../output/FINAL_MODEL_neg=0.001_diff=0.001_seed0/init_model.pkl'
     #yaml_filename = '../configs/OOS_Final_Model.yaml'
@@ -172,6 +193,8 @@ if __name__ == '__main__':
             'init': '../output/Synth_same_reg_as_alg_seed0/model_init_seed0.pkl',
             'final': '../output/Synth_same_reg_as_alg_seed0/model_final_seed0.pkl'
         }
+
+    #make_accs_and_losses_final_model()
 
     # for synth plots
     yaml_filename = '../configs/synth_plot.yaml'
@@ -186,10 +209,10 @@ if __name__ == '__main__':
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
     #make_dafi_plot(hparams)
-    #make_synth_plot(hparams, model_paths_synth)
+    make_synth_plot(hparams, model_paths_synth)
     #make_model_plot(hparams, path_to_saved_model, 0)
-    make_model_loss_plots('../output/CV_neg=0.001_diff=0.001_FINAL_OOS_seed0')
-
+    #make_model_loss_plots('../output/CV_neg=0.001_diff=0.001_FINAL_OOS_seed0')
+    #make_model_plots_both_panels(hparams, path_to_model_checkpoints)
 
 
     #run_gate_motion_from_saved_results(experiment_yaml_file)

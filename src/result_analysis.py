@@ -1,4 +1,5 @@
 import matplotlib
+import yaml
 import pickle
 matplotlib.use('Agg')
 matplotlib.rcParams['font.size'] = 10
@@ -11,9 +12,59 @@ import numpy as np
 from utils.ParameterParser import ParameterParser
 from utils.CellOverlaps import CellOverlaps
 from utils.bayes_gate import ModelTree
-from utils.input import Cll8d1pInput
+from utils.input import *
 import utils.utils_load_data as dh
 import torch.nn as nn
+
+default_hparams = {
+    'logistic_k': 100,
+    'logistic_k_dafi': 10000,
+    'regularization_penalty': 0,
+    'negative_box_penalty': 0.0,
+    'negative_proportion_default': 0.0001,
+    'positive_box_penalty': 0.0,
+    'corner_penalty': .0,
+    'feature_diff_penalty': 0.,
+    'gate_size_penalty': .0,
+    'gate_size_default': (0.5, 0.5),
+    'load_from_pickle': True,
+    'dafi_init': False,
+    'optimizer': "Adam",  # or Adam, SGD
+    'loss_type': 'logistic',  # or MSE
+    'n_epoch_eval': 100,
+    'n_mini_batch_update_gates': 50,
+    'learning_rate_classifier': 0.05,
+    'learning_rate_gates': 0.05,
+    'batch_size': 10,
+    'n_epoch': 1000, 
+    'seven_epochs_for_gate_motion_plot': [0, 50, 100, 200, 300, 400, 500],
+    'test_size': 0.20,
+    'experiment_name': 'default',
+    'random_state': 123,
+    'n_run': 2,
+    'init_type': 'random_corner',
+    'corner_init_deterministic_size': .75,
+    'train_alternate': True,
+    'run_logistic_to_convergence': False,
+    'output': {
+        'type': 'full'
+    },
+    'annealing': {
+        'anneal_logistic_k': False,
+        'final_k': 1000,
+        'init_k': 1
+    },
+    'two_phase_training': {
+        'turn_on': False,
+        'num_only_log_loss_epochs': 50
+    },
+    'plot_params':{
+        'figsize': [10, 10],
+        'marker_size': .01,
+    },
+    'use_out_of_sample_eval_data': False,
+    'dictionary_is_broken': True
+}
 
 column_names = ['random_state',
                 'train_accuracy',
@@ -511,16 +562,171 @@ def make_dafi_tree(hparams, cll_1p_full_input):
 #        pass
 
 
+
+def save_feats_panel1_in_sample(OOS_hparams, model_path, dafi_path):
+    with open(model_path, 'rb') as f:
+        model = pickle.load(f)
+    with open(dafi_path, 'rb') as f:
+        dafi = pickle.load(f)
+    if torch.cuda.is_available():
+        model.cuda(OOS_hparams['device'])
+        dafi.cuda(OOS_hparams['device'])
+
+    input = Cll8d1pInput(OOS_hparams)
+    #y_train and x_train are all the in sample data for this hparams setting
+    feats_model_soft = model.forward_4chain(input.x_train, input.y_train)['leaf_probs'].detach().cpu().numpy()
+    feats_model_hard = model.forward_4chain(input.x_train, input.y_train, use_hard_proportions=True)['leaf_probs'].detach().cpu().numpy()
+    feats_dafi = dafi.forward_4chain(input.x_train, input.y_train, use_hard_proportions=True)['leaf_probs'].detach().cpu().numpy()
+
+    save_array_feats = np.concatenate([input.y_train.detach().cpu().numpy()[:, np.newaxis], feats_model_soft, feats_model_hard, feats_dafi], axis=1)
+    
+
+    header = 'Label,Soft Features Model, Hard Features Model, Hard Features DAFI'
+
+    np.savetxt('../output/%s/feats_model_hard_and_soft_IS.csv' %OOS_hparams['experiment_name'], save_array_feats, delimiter=',', header=header)
+
+def save_feats_panel1_OOS(OOS_hparams, model_path, dafi_path):
+    with open(model_path, 'rb') as f:
+        model = pickle.load(f)
+    with open(dafi_path, 'rb') as f:
+        dafi = pickle.load(f)
+    if torch.cuda.is_available():
+        model.cuda(OOS_hparams['device'])
+        dafi.cuda(OOS_hparams['device'])
+
+    input = Cll8d1pInput(OOS_hparams)
+    #y_train and x_train are all the in sample data for this hparams setting
+    feats_model_soft = model.forward_4chain(input.x_eval, input.y_eval)['leaf_probs'].detach().cpu().numpy()
+    feats_model_hard = model.forward_4chain(input.x_eval, input.y_eval, use_hard_proportions=True)['leaf_probs'].detach().cpu().numpy()
+    feats_dafi = dafi.forward_4chain(input.x_eval, input.y_eval, use_hard_proportions=True)['leaf_probs'].detach().cpu().numpy()
+
+    save_array_feats = np.concatenate([input.y_eval.detach().cpu().numpy()[:, np.newaxis], feats_model_soft, feats_model_hard, feats_dafi], axis=1)
+    
+
+    header = 'Label,Soft Features Model, Hard Features Model, Hard Features DAFI'
+
+    np.savetxt('../output/%s/feats_model_hard_and_soft_OOS.csv' %OOS_hparams['experiment_name'], save_array_feats, delimiter=',', header=header)
+
+def save_feats_both_all_data(OOS_hparams, model_both_checkpoints_path, dafi_both_path):
+    with open(model_both_checkpoints_path, 'rb') as f:
+        model_checkpoints_both = pickle.load(f)
+
+    model_both = model_checkpoints_both[hparams['n_epoch']]
+
+    with open(dafi_both_path, 'rb') as f:
+        dafi_both = pickle.load(f)
+    if torch.cuda.is_available():
+        model_both.cuda(OOS_hparams['device'])
+        dafi_both.cuda(OOS_hparams['device'])
+
+    input = CllBothPanelsInput(OOS_hparams)
+    #y_train and x_train are all the in sample data for this hparams setting
+    feats_model = model_both(input.x_train, input.y_train, device=OOS_hparams['device'])['leaf_probs'].detach().cpu().numpy()
+    print(model_both.linear.weight, model_both.linear.bias)
+    print('dafi weights for logistic regressor')
+    print(dafi_both.linear.weight, dafi_both.linear.bias)
+    feats_dafi = dafi_both(input.x_train, input.y_train, use_hard_proportions=True, device=OOS_hparams['device'])['leaf_probs'].detach().cpu().numpy()
+
+    feats_model_with_labels = np.concatenate([input.y_train.detach().cpu().numpy()[:, np.newaxis], feats_model], axis=1)
+    feats_dafi_with_labels = np.concatenate([input.y_train.detach().cpu().numpy()[:, np.newaxis], np.squeeze(feats_dafi)], axis=1)
+    np.savetxt('../output/%s/feats_model.csv' %OOS_hparams['experiment_name'], feats_model_with_labels, delimiter=',', header='Label, Panel1, Panel2, Panel2')
+    np.savetxt('../output/%s/feats_dafi.csv' %OOS_hparams['experiment_name'], feats_dafi_with_labels, delimiter=',', header='Label, Panel1, Panel2, Panel2')
+
+
+
+def save_correct_dafi_hard_thresh_accs_regular_CV(CV_hparams):
+    SEEDS = np.concatenate([np.arange(73, 74), np.arange(29) + 1, np.arange(51, 72)], axis=0)
+    RESULTS_DIR_PREFIX = '../output/CV_neg=0.001_diff=0.001'
+    # will save seed, and accuracy for model/dafi
+    te_accs_per_seeds = -1 * np.ones([SEEDS.shape[0], 2]) 
+    for s, seed in enumerate(SEEDS):
+        input = Cll8d1pInput(hparams, random_state=seed)
+        seed_results_dir = RESULTS_DIR_PREFIX + '_seed%d' %seed 
+        #path_to_model_chekpoints = seed_results_dir + '/model_checkpoints.pkl'
+        #path_to_dafi_model = seed_results_dir + '/dafi_model.pkl'
+        dafi_path = seed_results_dir + '/dafi_model.pkl'
+        with open(dafi_path, 'rb') as f:
+            dafi_model = pickle.load(f)
+        dafi_model.cuda(0)
+        feats_dafi = dafi_model.forward_4chain(input.x_eval, input.y_eval, use_hard_proportions=True, device=0)['leaf_probs'].detach().cpu().numpy()
+        feats_dafi_p1 = feats_dafi
+        preds = feats_dafi_p1 > 0.0001
+        acc_updated_thresh_dafi = np.sum(np.array([preds[i] == y.cpu().detach().numpy() for i, y in enumerate(input.y_eval)]))/preds.shape[0]
+
+
+        te_accs_per_seeds[s] = [seed, acc_updated_thresh_dafi]
+
+    header = 'seed, dafi te acc threshold at 0.0001'
+    savepath = RESULTS_DIR_PREFIX + '/accs_updated_thresh=0.0001_dafi.csv'
+    np.savetxt(savepath, te_accs_per_seeds, header=header, fmt='%.4f', delimiter=',')
+
+def avg_both_CV_te_results():
+    SEEDS = np.concatenate([np.arange(73, 74), np.arange(29) + 1, np.arange(51, 72)], axis=0)
+    RESULTS_DIR_PREFIX = '../output/Both_Panels_CV_neg=0.001_diff=0.001'
+    # will save seed, and accuracy for model/dafi
+    te_accs_per_seeds = -1 * np.ones([SEEDS.shape[0], 3]) 
+    for s, seed in enumerate(SEEDS):
+        seed_results_dir = RESULTS_DIR_PREFIX + '_seed%d' %seed 
+        #path_to_model_chekpoints = seed_results_dir + '/model_checkpoints.pkl'
+        #path_to_dafi_model = seed_results_dir + '/dafi_model.pkl'
+        eval_tracker_m_path = seed_results_dir + '/tracker_eval_m.pkl'
+        eval_tracker_d_path = seed_results_dir + '/tracker_eval_d.pkl'
+        with open(eval_tracker_m_path,  'rb') as f:
+            eval_tracker_m = pickle.load(f)
+
+        with open(eval_tracker_d_path,  'rb') as f:
+            eval_tracker_d = pickle.load(f)
+
+        te_accs_per_seeds[s] = [seed, eval_tracker_m.acc[-1], eval_tracker_d.acc[-1]]
+
+    variances = (np.var(te_accs_per_seeds, axis=0)**(1/2))
+    print('variance: model %.4f, dafi %.4f' %(variances[1], variances[2]))
+    print('Avg model both te acc: %.4f' %(np.mean(te_accs_per_seeds, axis=0)[1]))
+    print('Avg Dafi both te acc: %.4f' %(np.mean(te_accs_per_seeds, axis=0)[2]))
+    header = 'seed, model te acc, dafi te acc logreg'
+    savepath = RESULTS_DIR_PREFIX + '/accs_both.csv'
+    np.savetxt(savepath, te_accs_per_seeds, header=header, fmt='%.4f', delimiter=',')
+
+        
 if __name__ == '__main__':
+
+    #yaml_filename = '../configs/OOS_both_panels.yaml' #for both panels
+    yaml_filename = '../configs/OOS_Final_Model.yaml'
+    hparams = default_hparams
+    with open(yaml_filename, "r") as f_in:
+        yaml_params = yaml.safe_load(f_in)
+    hparams.update(yaml_params)
+
+    ## For single panel feat generation trained on all 102
+    # Note I accidentally mislabelled the save results with CV in the front
+    model_path = '../output/CV_neg=0.001_diff=0.001_FINAL_OOS_seed0/model.pkl'
+    dafi_path = '../output/CV_neg=0.001_diff=0.001_FINAL_OOS_seed0/dafi_model.pkl'
+    save_feats_panel1_OOS(hparams, model_path, dafi_path)
+    save_feats_panel1_in_sample(hparams, model_path, dafi_path)
+
+    ## for both panels feat generation
+    #OOS_model_both_checkpoint_path = '../output/OOS_both_panels_seed0/model_checkpoints.pkl'
+    #OOS_dafi_both_path = '../output/OOS_both_panels_seed0/dafi_model.pkl'
+    #save_feats_both_all_data(hparams, OOS_model_both_checkpoint_path, OOS_dafi_both_path)
+
     
     #combine_results_into_one_csv('../output/logreg_to_conv_grid_search', '../output/agg_results_logreg_to_conv_gs1', '../data/cll/y_dev_4d_1p.pkl')
     #combine_results_into_one_csv('../output/logreg_to_conv_grid_search', '../output/agg_results_logreg_to_conv_gs2', '../data/cll/y_dev_4d_1p.pkl', corner_reg_grid=[0.001, 0.050], gate_size_reg_grid=[0.25, 0.5], decimal_points_in_dir_name=3)
     #combine_results_into_one_csv('../output/two_phase_logreg_to_conv_grid_search_gate_size=', '../output/agg_results_two_phase', '../data/cll/y_dev_4d_1p.pkl', corner_reg_grid=[0.00], gate_size_reg_grid= [0., 0.25, 0.5, 0.75, 1., 1.25, 1.5, 1.75, 2.])
     path_to_hparams = '../configs/baseline_plot.yaml'
     savepath = '../data/cll/8d_FINAL/x_all.csv'
-    make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hparams, savepath)
+    #make_and_write_concatenated_8d_data_with_dafi_gate_flags_and_ids(path_to_hparams, savepath)
     #write_ranked_features_model_dafi(path_to_hparams)
 
+    #avg_both_CV_te_results()
+
+    # Get dafi accs with updated threshold
+##    yaml_filename = '../configs/CV_runs.yaml'
+#    hparams = default_hparams
+#    with open(yaml_filename, "r") as f_in:
+#        yaml_params = yaml.safe_load(f_in)
+#    hparams.update(yaml_params)
+#    save_correct_dafi_hard_thresh_accs_regular_CV(hparams)
     
 
     #dataname = 'cll_4d_1p'

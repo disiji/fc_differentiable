@@ -72,7 +72,7 @@ def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_th
     while delta > conv_thresh:
         #features are fixed here, the only thing we need is the change in log loss from logistic params
         #forward pass through entire model is uneccessary!
-        log_loss = BCEWithLogits(model.linear(log_features).squeeze(1), y)
+        log_loss = BCEWithLogits(model.linear(log_features).squeeze(), y)
         optimizer_classifier.zero_grad()
         log_loss.backward()
         optimizer_classifier.step()
@@ -163,6 +163,7 @@ def gate_size_large_enough(model, min_gate_size):
     return True
 
 def run_train_dafi_logreg_to_conv(dafi_model, hparams, input):
+    DAFI_LR = 0.001
     eval_tracker = Tracker()
     train_tracker = Tracker()
     train_tracker.model_init = deepcopy(dafi_model)
@@ -175,7 +176,7 @@ def run_train_dafi_logreg_to_conv(dafi_model, hparams, input):
             dafi_model, 
             input.x_train,
             input.y_train, 
-            hparams['learning_rate_classifier'],
+            0.001,
             verbose=False,
             log_features = output_detached['leaf_logp']
     )

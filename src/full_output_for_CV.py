@@ -59,6 +59,7 @@ def write_probs_for_tr_te_for_model_dafi(model, dafi_model, input, experiment_na
 def from_gpu_to_numpy(gpu_tensor):
     return gpu_tensor.cpu().detach().numpy()
 
+
 def get_diagnostics_init_final(model, data, labels, tracker):
     diagnostics = {}
 
@@ -84,17 +85,17 @@ def get_diagnostics_init_final(model, data, labels, tracker):
     diagnostics['feature_diff_reg_f'] = tracker.feature_diff_loss[-1]
     diagnostics['mean_feature_f_pos'] = np.mean(pos_leaf_probs_f)
     diagnostics['mean_feature_f_neg'] = np.mean(neg_leaf_probs_f)
-
-    expert_preds = np.array([0. if prop <= .00015 else 1. for prop in all_probs_f])
+    
+    expert_preds = np.array([0. if prop[0] <= .00015 else 1. for prop in all_probs_f]) # change to just prop if using ModelTree instead of ModelTreeBoth
     diagnostics['expert_thresh_acc_f'] = np.sum(expert_preds == from_gpu_to_numpy(labels))/len(expert_preds)
 
-    model_class_probs = from_gpu_to_numpy(output_f['y_pred'])
+    #model_class_probs = from_gpu_to_numpy(output_f['y_pred'])
     
-    weights = (model_class_probs - 0.5)**2/(np.sum((model_class_probs - 0.5)**2))
-    weighted_avg_thresh = np.sum(weights.reshape([-1, 1]) * np.array(all_probs_f).reshape([-1, 1]))
-    print(weighted_avg_thresh)
-    weighted_avg_preds = np.array([1. if prop > weighted_avg_thresh else 0. for prop in all_probs_f])
-    diagnostics['wavg_thresh_acc_f'] = np.sum(weighted_avg_preds == from_gpu_to_numpy(labels))/len(weighted_avg_preds)
+    #weights = (model_class_probs - 0.5)**2/(np.sum((model_class_probs - 0.5)**2))
+    #weighted_avg_thresh = np.sum(weights.reshape([-1, 1]) * np.array(all_probs_f).reshape([-1, 1]))
+    #print(weighted_avg_thresh)
+    #weighted_avg_preds = np.array([1. if prop > weighted_avg_thresh else 0. for prop in all_probs_f])
+    #diagnostics['wavg_thresh_acc_f'] = np.sum(weighted_avg_preds == from_gpu_to_numpy(labels))/len(weighted_avg_preds)
 
     diagnostics['acc_f'] = tracker.acc[-1]
 

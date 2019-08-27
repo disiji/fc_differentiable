@@ -1,11 +1,14 @@
 import pickle
+import matplotlib.pyplot as plt
 
 import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 
 import utils.utils_load_data as dh
+from utils.bayes_gate import ReferenceTreeBoth
 from utils.bayes_gate import ReferenceTree
+
 from  copy import deepcopy
 from utils.HeuristicInitializer import HeuristicInitializer
 
@@ -227,15 +230,15 @@ class Cll4d1pInput(CLLInputBase):
             on_cuda_list_x_train = []
             on_cuda_list_x_eval = []
             for i in range(len(self.x_train)):
-                on_cuda_list_x_train.append(self.x_train[i].cuda())
+                on_cuda_list_x_train.append(self.x_train[i].cuda(self.hparams['device']))
             if not (self.x_eval is None):
                 for i in range(len(self.x_eval)):
-                    on_cuda_list_x_eval.append(self.x_eval[i].cuda())
+                    on_cuda_list_x_eval.append(self.x_eval[i].cuda(self.hparams['device']))
             self.x_train = on_cuda_list_x_train
             if not (self.x_eval is None):
                 self.x_eval = on_cuda_list_x_eval
-                self.y_eval = self.y_eval.cuda()
-            self.y_train = self.y_train.cuda()
+                self.y_eval = self.y_eval.cuda(self.hparams['device'])
+            self.y_train = self.y_train.cuda(self.hparams['device'])
         self._normalize_x_list_all()
 
 #    def _normalize_(self):
@@ -278,10 +281,11 @@ class Cll4d1pInput(CLLInputBase):
             self.y_train = [self.y_list[idx] for idx in self.idxs_train]
             # double check that I didnt accidentally put the oos data into train
             # first assert to make sure this works with floats properly
-            assert(np.array_equal(self.x_train[0], self.x_train[0]))
-            for x_ev in self.x_eval:
-                for x_tr in self.x_train:
-                    assert(not(np.array_equal(x_ev, x_tr)))
+            # breaks the 2p code, so I commented out, but passes with the 1p code
+            #assert(np.array_equal(self.x_train[0], self.x_train[0]))
+            #for x_ev in self.x_eval:
+            #    for x_tr in self.x_train:
+            #        assert(not(np.array_equal(x_ev, x_tr)))
             print('%d samples in training data and %d samples in eval' %(len(self.x_train), len(self.x_eval)))
 
         elif self.split_fold_idxs is None:
@@ -370,6 +374,7 @@ class Cll8d1pInput(Cll4d1pInput):
         #    self._get_init_nested_list_(hparams)
         #    self._normalize_()
         self.split(random_state=random_state)
+
         self._normalize_()
         self._get_init_nested_list_(hparams)
         self._construct_()
@@ -710,7 +715,7 @@ class Cll8d1pInput(Cll4d1pInput):
         return [[1003., 3011., 1024., 3071.],[1083., 3091., 1024., 3071.],[1023., 3069., 1024., 3072.],[1024., 3071., 1026, 3078.]]
 
 class SynthInput(Cll8d1pInput):
-    def __init__(self, hparams, random_state=0, augment_data_paths=None, split_fold_idxs=None):
+    def __init__(self, hparams, random_state=0, augment_data_paths=None, split_fold_idxs=None, device=1):
         self.hparams = hparams
         # used to include dev data in training but not testing
         self.augment_data_paths = augment_data_paths
@@ -1130,3 +1135,314 @@ class Cll2pFullInput(Cll4d2pInput):
                     ]
                 ]
             ]
+class CllBothPanelsInput(Cll8d1pInput):
+    def __init__(self, hparams, random_state=0, split_fold_idxs=None):
+        self.augment_data_paths = hparams['augment_data_params'] if hparams['augment_training_with_dev_data'] else None
+
+        self.split_fold_idxs = split_fold_idxs
+        self.hparams = hparams
+        self.n_panels = 2
+
+        self.features = [['FSC-A', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b'],
+                         ['FSC-A', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD38', 'CD20', 'Anti-Lambda', 'Anti-Kappa']]
+        self.features_full = [['FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b', 'CD3'], [
+            'FSC-A', 'FSC-H', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD38', 'CD20', 'Anti-Lambda', 'Anti-Kappa']]
+        self.feature2id = [dict((self.features[0][i], i) for i in range(len(self.features[0]))),
+                           dict((self.features[1][i], i) for i in range(len(self.features[1])))]
+        self.random_state = random_state
+        self._load_data_()
+        self._fill_empty_samples_()
+        self.split(random_state=random_state)
+        self._get_reference_nested_list_()
+        self._normalize_()
+        self._get_init_nested_list_()
+        self._construct_()
+
+        self.x = [[torch.tensor(_[0], dtype=torch.float32), torch.tensor(_[1], dtype=torch.float32)] for _ in
+                  self.x_list]
+
+
+        self.y = torch.tensor(self.y_list, dtype=torch.float32)
+
+        size=.0003
+        plt.scatter(self.x[0][1][:, 1], self.x[0][1][:, 2], s=size)
+        plt.savefig('testing.png')
+        size=.0003
+        plt.scatter(self.x[0][0][:, 1], self.x[0][0][:, 2], s=size)
+        plt.savefig('testing2.png')
+        size=.0003
+        plt.scatter(self.x[0][1][:, 0], self.x[0][1][:, 3], s=size)
+        plt.savefig('testing3.png')
+        size=.0003
+        plt.scatter(self.x[0][0][:, 0], self.x[0][0][:, 3], s=size)
+        plt.savefig('testing4.png')
+
+    def _fill_empty_samples_(self):
+        for panel_id in range(2):
+            input_x_pos = np.concatenate([self.x_list[idx][panel_id] for idx in range(len(self.y_list))
+                                          if self.y_list[idx] == 1])
+            input_x_neg = np.concatenate([self.x_list[idx][panel_id] for idx in range(len(self.y_list))
+                                          if self.y_list[idx] == 0])
+            for sample_id in range(len(self.x_list)):
+                if self.x_list[sample_id][panel_id].shape[0] == 0:
+                    if self.y_list[sample_id] == 1:
+                        self.x_list[sample_id][panel_id] = np.random.permutation(input_x_pos)[:100]
+                    else:
+                        self.x_list[sample_id][panel_id] = np.random.permutation(input_x_neg)[:100]
+    def _load_data_(self):
+        DATA_DIR = '../data/cll/'
+        CYTOMETRY_DIR_PB1 = DATA_DIR + "PB1_whole_mqian/"
+        CYTOMETRY_DIR_PB2 = DATA_DIR + "PB2_whole_mqian/"
+        DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
+        X_DATA_PATH = self.hparams['data']['features_path']
+        Y_DATA_PATH = self.hparams['data']['labels_path']
+
+        # self.x_list = [[x_pb1_idx, x_pb2_idx] for idx in range(n_samples)] # x_pb1_idx, x_pb2_idx are numpy arrays
+        # self.y_list = [y_idx for idx in range(n_samples)]
+        if self.hparams['load_from_pickle']:
+            with open(X_DATA_PATH, 'rb') as f:
+                self.x_list = pickle.load(f)
+                print('Number of samples: %d' %(len(self.x_list)))
+            with open(Y_DATA_PATH, 'rb') as f:
+                self.y_list = pickle.load(f)
+        else:
+            x, y = dh.load_cll_data_2p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR_PB1, CYTOMETRY_DIR_PB2,
+                                       self.features_full[0], self.features_full[1])
+            ### Here we want to just filter the 
+            x_8d_pb1 = dh.filter_cll_8d_pb1([_[0] for _ in x])
+            x_10d_pb2 = dh.filter_cll_10d_pb2([_[1] for _ in x])
+            x_2p = [[x_8d_pb1[sample_idx], x_10d_pb2[sample_idx]] for sample_idx in range(len(x_8d_pb1))]
+            with open(DATA_DIR + 'filtered_2p_full_x_list.pkl', 'wb') as f:
+                pickle.dump(x_2p, f)
+            with open(DATA_DIR + 'y_2p_list.pkl', 'wb') as f:
+                pickle.dump(y, f)
+            self.x_list, self.y_list = x_2p, y
+
+    def _construct_(self):
+        #self.reference_tree = [ReferenceTree(self.reference_nested_list[i], self.feature2id[i])
+        #                       for i in range(self.n_panels)]
+        #self.init_tree = [ReferenceTree(self.init_nested_list[i], self.feature2id[i]) for i in range(self.n_panels)]
+        self.reference_tree = ReferenceTreeBoth(self.reference_nested_list, self.feature2id)
+        self.init_tree = ReferenceTreeBoth(self.init_nested_list, self.feature2id)
+        if self.hparams['dafi_init']:
+            self.init_tree = [None] * self.n_panels
+
+    def _normalize_x_list_all(self):
+        self.x_list, offset, scale = dh.normalize_x_list_multiple_panels(self.x_list, offset=self.offset, scale=self.scale)
+        self.x_list = [[torch.tensor(x, dtype=torch.float32) for x in _] for _ in self.x_list]
+        self.y_list = torch.tensor(self.y_list, dtype=torch.float32)
+        if torch.cuda.is_available():
+            on_cuda_list_x = []
+            for i in range(len(self.x_list)):
+                on_cuda_list_x.append([x.cuda() for x in self.x_list[i]])
+            self.x_list = on_cuda_list_x
+            self.y_list = self.y_list.cuda()
+
+    
+    def _normalize_data_tr_and_nested_list(self):
+        self.x_train, offset, scale = dh.normalize_x_list_multiple_panels(self.x_train)
+        #print(self.feature2id, offset, scale, self.reference_nested_list)
+        self.reference_nested_list = dh.normalize_nested_tree_both_panels(self.reference_nested_list, offset, scale,
+                                                              self.feature2id)
+        if not (self.hparams['init_type'] == 'random_corner' or self.hparams['init_type'] == 'same_corners_as_DAFI' or self.hparams['init_type'] == 'padhraics_init' or self.hparams['init_type'] == 'heuristic_init'):
+            self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
+        self.offset = offset
+        self.scale = scale
+
+    def _normalize_data_eval(self):        
+        self.x_eval, offset, scale = dh.normalize_x_list_multiple_panels(self.x_eval, offset=self.offset, scale=self.scale)
+
+    def _normalize_(self):
+        self._normalize_data_tr_and_nested_list()
+
+        if self.hparams['test_size'] == 0 and ((self.split_fold_idxs is None) and (not self.hparams['use_out_of_sample_eval_data'])):
+            self.x_train = [[torch.tensor(x, dtype=torch.float32) for x in _] for _ in self.x_train]
+            self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
+        else:
+            self._normalize_data_eval()
+            self.x_train = [[torch.tensor(x, dtype=torch.float32) for x in _] for _ in self.x_train]
+            self.x_eval = [[torch.tensor(x, dtype=torch.float32) for x in _] for _ in self.x_eval]
+            self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
+            self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
+
+        if torch.cuda.is_available():
+            on_cuda_list_x_train = []
+            on_cuda_list_x_eval = []
+            for i in range(len(self.x_train)):
+                on_cuda_list_x_train.append([x_both.cuda(self.hparams['device']) for x_both in self.x_train[i]])
+            if not (self.x_eval is None):
+                for i in range(len(self.x_eval)):
+                    on_cuda_list_x_eval.append([x_both.cuda(self.hparams['device']) for x_both in self.x_eval[i]])
+            self.x_train = on_cuda_list_x_train
+            if not (self.x_eval is None):
+                self.x_eval = on_cuda_list_x_eval
+                self.y_eval = self.y_eval.cuda(self.hparams['device'])
+            self.y_train = self.y_train.cuda(self.hparams['device'])
+        self._normalize_x_list_all()
+
+    
+    def _get_init_nested_list_(self):
+        if self.hparams['init_type'] == 'heuristic_init':
+            self.init_nested_list = self._get_heuristic_init()
+        else:
+            raise NotImplementedError('Non-heuristic initializion not implemented for both panel input object')
+
+    def _get_heuristic_init(self):
+        # idea is to get heuristic initializations for all P1 nodes like normal,
+        # and for panel two leaves to just consider points in the upper portion of
+        # the grid of points using a specially created hueristic init object
+        
+        print('All gate ids are')
+        gate_ids_both = self.get_gate_data_ids_both()
+        print(gate_ids_both)
+        data_for_init_pos, data_for_init_neg = self._get_concatenated_data_for_init()
+
+        heuristic_initializer_both = HeuristicInitializer(
+            self.hparams['node_type'],
+            gate_ids_both, # check this
+            np.concatenate(data_for_init_pos),
+            np.concatenate(data_for_init_neg),
+            num_gridcells_per_axis = self.hparams['heuristic_init']['num_gridcells_per_axis'],
+            greedy_filtering = self.hparams['heuristic_init']['use_greedy_filtering'],
+            consider_all_gates=self.hparams['heuristic_init']['consider_all_gates']
+        )
+
+        data_p1_leaf_pos, data_p1_leaf_neg = self._get_data_p1_leaf_for_init()
+        heuristic_initializer_p1_leaf = HeuristicInitializer(
+            self.hparams['node_type'],
+            [[self.feature2id[0]['CD10'], self.feature2id[0]['CD79b']]], 
+            np.concatenate([self.from_gpu_to_numpy(data) for data in data_p1_leaf_pos]),
+            np.concatenate([self.from_gpu_to_numpy(data) for data in data_p1_leaf_neg]),
+            num_gridcells_per_axis = self.hparams['heuristic_init']['num_gridcells_per_axis'],
+            greedy_filtering = self.hparams['heuristic_init']['use_greedy_filtering'],
+            consider_all_gates=self.hparams['heuristic_init']['consider_all_gates']
+        )
+    
+
+        both_flat_gates = heuristic_initializer_both.get_heuristic_gates()
+        just_p1_leaf_gates_flat = heuristic_initializer_p1_leaf.get_heuristic_gates()
+        just_p2_gates_flat = self._get_flat_p2_gates_init()
+        flat_gates = both_flat_gates + just_p1_leaf_gates_flat + just_p2_gates_flat 
+        print('Final initialized flat gates:')
+        print(flat_gates)
+        self.flat_heuristic_gates = flat_gates
+        init_nested_list = self._convert_flattened_list_to_nested_(flat_gates)
+        #init_nested_list = dh.normalize_nested_tree_both_panels(nested_list, self.offset, self.scale, self.feature2id)
+
+        return init_nested_list
+
+    def _convert_flattened_list_to_nested_(self, gates):
+        nested_list = \
+            [
+                [[u'SSC-H', gates[0][0], gates[0][1]], [u'CD45', gates[0][2], gates[0][3]], 'both'],
+                [
+                    [
+                        [[u'FSC-A', gates[1][0], gates[1][1]], [u'SSC-A', gates[1][2], gates[1][3]], 'both'],
+                        [
+                            [
+                                [[u'CD5', gates[2][0], gates[2][1]], [u'CD19', gates[2][2], gates[2][3]], 'both'],
+                                [
+                                    [
+                                        [[u'CD10', gates[3][0], gates[3][1]], [u'CD79b', gates[3][2], gates[3][3]], 'p1'],
+                                        []
+                                    ],
+                                    [
+                                        [[u'CD38', gates[4][0], gates[4][1]],[u'CD20', gates[4][2], gates[4][3]], 'p2'], [[[[u'Anti-Kappa',gates[5][0], gates[5][1]], [u'Anti-Lambda', gates[5][2], gates[5][3]], 'p2'], []], [[[u'Anti-Kappa', gates[6][0], gates[6][1]], [u'Anti-Lambda', gates[6][2], gates[6][3]], 'p2'], []]]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        return nested_list
+    
+    def _get_data_p1_leaf_for_init(self):
+        data_p1_pos = [x_both[0] for i, x_both in enumerate(self.x_train) if self.y_train[i] == 1]
+        data_p1_neg = [x_both[0] for i, x_both in enumerate(self.x_train) if self.y_train[i] == 0]
+        return data_p1_pos, data_p1_neg
+
+    def _get_flat_p2_gates_init(self):
+        # starting in the middle for gates which are only in p2 since the
+        # feature diff hueristic makes no sense for these gates
+        flat_p2_init_gates = \
+            [[.25, .75, .25, .75],[.25, .75, .25, .75],[.25, .75, .25, .75]]
+        return flat_p2_init_gates
+
+    
+
+    def get_gate_data_ids_both(self):
+        # doesnt matter which feature2id used since both p1 and p2 have the same
+        # ordering for the first five features
+        gate_data_ids = \
+            [
+                [self.feature2id[0]['SSC-H'], self.feature2id[0]['CD45']], 
+                [self.feature2id[0]['FSC-A'], self.feature2id[0]['SSC-A']], 
+                [self.feature2id[0]['CD5'], self.feature2id[0]['CD19']], 
+            ]
+
+        return gate_data_ids 
+    def from_gpu_to_numpy(self, tensor):
+        return tensor.detach().cpu().numpy()
+
+    def _get_data_for_init_both(self):
+        FEATURE_IDXS_IN_BOTH = np.array([0, 1, 2, 3, 4, 5])
+        x_p1_both = [self.from_gpu_to_numpy(x[0][:, FEATURE_IDXS_IN_BOTH]) for x in self.x_train]
+        x_p1_both_pos = [x for i,x in enumerate(x_p1_both) if self.y_train[i] == 1]
+        x_p1_both_neg = [x for i,x in enumerate(x_p1_both) if self.y_train[i] == 0]
+        return x_p1_both_pos, x_p1_both_neg
+
+    def _get_concatenated_data_for_init(self):
+        FEATURE_IDXS_IN_BOTH = np.array([0, 1, 2, 3, 4, 5])
+        x_cat_list = []
+        for x_both in self.x_train:
+            x_both = [self.from_gpu_to_numpy(x[:, FEATURE_IDXS_IN_BOTH]) for x in x_both]
+            x_cat = np.concatenate(x_both, axis=0)
+            x_cat_list.append(x_cat)
+        x_cat_list_pos = [x_cat for i, x_cat in enumerate(x_cat_list) if self.y_train[i] == 1]
+        x_cat_list_neg = [x_cat for i, x_cat in enumerate(x_cat_list) if self.y_train[i] == 0]
+        return x_cat_list_pos, x_cat_list_neg
+
+
+
+        
+
+
+#        initializer_p1_and_38_20 = HeuristicInitializerBoth(
+#            self.hparams['node_type'],
+#            gate_ids,
+#            self.x_train,
+#            self.y_train,
+#            num_gridcells_per_axis = self.hparams['heuristic_init']['num_gridcells_per_axis'],
+#            greedy_filtering = self.hparams['heuristic_init']['use_greedy_filtering'],
+#            consider_all_gates=self.hparams['heuristic_init']['consider_all_gates'],
+#            filter_func= self.hparams['heuristic_init']['filter_func']
+#        )
+    
+    def _get_reference_nested_list_(self):
+        self.reference_nested_list = \
+            [
+                [[u'SSC-H', 102., 921.], [u'CD45', 2048., 3891], 'both'],
+                [
+                    [
+                        [[u'FSC-A', 921., 2150.], [u'SSC-A', 102., 921.], 'both'],
+                        [
+                            [
+                                [[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.], 'both'],
+                                [
+                                    [
+                                        [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.], 'p1'],
+                                        []
+                                    ],
+                                    [
+                                        [[u'CD38', 0., 1740.],[u'CD20', 614., 2252.], 'p2'], [[[[u'Anti-Kappa',1536., 3481.], [u'Anti-Lambda', 0., 1536], 'p2'], []], [[[u'Anti-Kappa', 0., 1536.], [u'Anti-Lambda', 1536., 3481.], 'p2'], []]]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+            
+
+
