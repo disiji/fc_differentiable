@@ -1,2 +1,5 @@
 *.pyc
 *.png
+*.pkl
+output/
+data/

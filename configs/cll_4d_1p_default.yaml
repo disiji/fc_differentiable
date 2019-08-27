@@ -1,1 +1,2 @@
 experiment_name: 'cll_4d_1p_default'
+corner_penalty: 10000000000

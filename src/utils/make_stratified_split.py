@@ -3,9 +3,9 @@ import pickle
 import os
 import numpy as np
 
-DATA_PATH_X = '../data/cll/filtered_4d_1p_x_list.pkl'
+DATA_PATH_X = '../data/cll/filtered_8d_1p_x_list.pkl'
 DATA_PATH_Y = '../data/cll/y_1p_list.pkl'
-SAVE_PATH = '../data/cll'
+SAVE_PATH = '../data/cll/8d'
 random_state = 123
 
 dev_size = .32
@@ -22,11 +22,11 @@ print(x_val[0].shape)
 print(y_val)
 print('Num_positive in dev: %d, Num negative in dev: %d' %(sum(y_dev), len(y_dev) - sum(y_dev)))
 
-with open(os.path.join(SAVE_PATH, 'x_val_4d_1p.pkl'),  'wb') as f:
+with open(os.path.join(SAVE_PATH, 'x_val_8d_1p.pkl'),  'wb') as f:
     pickle.dump(x_val, f)
-with open(os.path.join(SAVE_PATH, 'x_dev_4d_1p.pkl'),  'wb') as f:
+with open(os.path.join(SAVE_PATH, 'x_dev_8d_1p.pkl'),  'wb') as f:
     pickle.dump(x_dev, f)
-with open(os.path.join(SAVE_PATH, 'y_val_4d_1p.pkl'),  'wb') as f:
+with open(os.path.join(SAVE_PATH, 'y_val_8d_1p.pkl'),  'wb') as f:
     pickle.dump(y_val, f)
-with open(os.path.join(SAVE_PATH, 'y_dev_4d_1p.pkl'),  'wb') as f:
+with open(os.path.join(SAVE_PATH, 'y_dev_8d_1p.pkl'),  'wb') as f:
     pickle.dump(y_dev, f)

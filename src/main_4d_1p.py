@@ -3,6 +3,7 @@ import os
 
 import yaml
 
+from utils.utils_plot import plot_gate_motion
 from train import *
 from utils.bayes_gate import ModelTree
 from utils.input import *
@@ -32,13 +33,28 @@ default_hparams = {
     'random_state': 123,
     'n_run': 2,
     'train_alternate': True,
+    'run_logistic_to_convergence': False,
     'output': {
         'type': 'full'
+    },
+    'annealing': {
+        'anneal_logistic_k': False,
+        'final_k': 1000,
+        'init_k': 1
+    },
+    'two_phase_training': {
+        'turn_on': False,
+        'num_only_log_loss_epochs': 50
+    },
+    'plot_params': {
+        'figsize': [10, 10],
+        'marker_size': .01,
     }
 }
 
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
+    torch.cuda.set_device(0)
 
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
@@ -73,10 +89,17 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                               init_tree=None,
                               loss_type=hparams['loss_type'],
                               gate_size_default=hparams['gate_size_default'])
+        if torch.cuda.is_available():
+            model_tree.cuda()
+            dafi_tree.cuda()
 
         # dafi_tree = run_train_dafi(dafi_tree, hparams, cll_4d_input)
-        model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \
-            run_train_model(model_tree, hparams, cll_4d_input, model_checkpoint=model_checkpoint)
+        if hparams['two_phase_training']['turn_on']: 
+            model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \
+                run_train_model_two_phase(hparams, cll_4d_input, model_checkpoint=model_checkpoint)
+        else:
+            model_tree, train_tracker, eval_tracker, run_time, model_checkpoint_dict = \
+                run_train_model(model_tree, hparams, cll_4d_input, model_checkpoint=model_checkpoint)
         if hparams['output']['type'] == 'full':
             output_metric_dict = run_output(
                 model_tree, dafi_tree, hparams, cll_4d_input, train_tracker, eval_tracker, run_time)
@@ -91,15 +114,34 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
         # run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, cll_4d_input, output_metric_dict)
         # run_plot_gates(hparams, train_tracker, eval_tracker, model_tree, dafi_tree, cll_4d_input)
         run_write_prediction(model_tree, dafi_tree, cll_4d_input, hparams)
-        run_gate_motion_1p(hparams, cll_4d_input, model_checkpoint_dict)
+        #run_gate_motion_1p(hparams, cll_4d_input, model_checkpoint_dict)
+
+        models_per_iteration = [model_checkpoint_dict[iteration] 
+                for iteration in 
+                hparams['seven_epochs_for_gate_motion_plot']
+        ]
+
+        detached_data_x_tr = [x.cpu().detach().numpy() for x in cll_4d_input.x_train]
+
+        plot_gate_motion(
+                models_per_iteration, 
+                dafi_tree,
+                detached_data_x_tr[0],
+                hparams
+        )
         # model_checkpoint = False
 
 
 if __name__ == '__main__':
+    #all of this needs to be put into a parser object for the hparams
     # run_single_panel(sys.argv[1], int(sys.argv[2]), True)
     hparams = default_hparams
-#    yaml_filename = '../configs/cll_4d_1p_reg_grid_srch.yaml'
-    yaml_filename = '../configs/cll_4d_1p_default.yaml'
+    #yaml_filename = '../configs/cll_4d_1p_reg_grid_srch.yaml'
+    #yaml_filename = '../configs/testing_log_to_conv.yaml'
+    #yaml_filename = '../configs/log_to_conv_gridsrch.yaml'
+    #yaml_filename = '../configs/testing_two_phase_training.yaml'
+    #yaml_filename = '../configs/two_phase_grid_search.yaml'
+    yaml_filename = '../configs/single_two_phase_plot_testing.yaml'
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
@@ -111,20 +153,3 @@ if __name__ == '__main__':
         hparams['n_epoch_dafi'] = hparams['n_epoch']
 
     run_single_panel(hparams, 1, True)
-    #Change this two lines to run in parallel
-    
-    #grid_neg_box = [1.]
-    #grid_corner_reg = [1., 0., 0.1]
-
-    #
-    #grid_gate_size = [0.1]
-    ##run_single_panel(hparams, 1, True)
-    #for neg_box_reg in grid_neg_box:
-    #    for corner_reg in grid_corner_reg:
-    #        for gate_size_reg in grid_gate_size:
-    #            hparams['negative_box_penalty'] = neg_box_reg
-    #            hparams['corner_penalty'] = corner_reg
-    #            hparams['gate_size_penalty'] = gate_size_reg
-    #            hparams['experiment_name'] = 'grid_search_neg_box=%.2f_corner=%.2f_gate_size=%.2f' %(neg_box_reg, corner_reg, gate_size_reg)
-    #            print(hparams)
-    #            run_single_panel(hparams, 1, True)
