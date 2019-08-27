@@ -241,14 +241,6 @@ class Cll4d1pInput(CLLInputBase):
             self.y_train = self.y_train.cuda(self.hparams['device'])
         self._normalize_x_list_all()
 
-#    def _normalize_(self):
-#        self.x_list, offset, scale = dh.normalize_x_list(self.x_list)
-#        #print(self.feature2id, offset, scale, self.reference_nested_list)
-#        self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
-#                                                              self.feature2id)
-#        if not (self.hparams['init_type'] == 'random_corner' or self.hparams['init_type'] == 'same_corners_as_DAFI' or self.hparams['init_type'] == 'padhraics_init' or self.hparams['init_type'] == 'heuristic_init'):
-#            self.init_nested_list = dh.normalize_nested_tree(self.init_nested_list, offset, scale, self.feature2id)
-
     def _construct_(self):
         self.reference_tree = ReferenceTree(self.reference_nested_list, self.feature2id)
         self.init_tree = ReferenceTree(self.init_nested_list, self.feature2id)
@@ -262,14 +254,11 @@ class Cll4d1pInput(CLLInputBase):
             self.x_eval = None
             self.y_eval = None
             
-            ##self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
-            ##self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
         elif self.hparams['use_out_of_sample_eval_data']:
             with open(self.hparams['out_of_sample_eval_data'], 'rb') as f:
                 self.x_eval = pickle.load(f)
             with open(self.hparams['out_of_sample_eval_labels'], 'rb') as f:
                 self.y_eval = pickle.load(f)
-            # in this case both x_list and y_list start out as just the training data, ie all of the data we used for our CV results etc, and not the out of sample data
             self.idxs_train = np.arange(len(self.x_list))
             self.idxs_eval = np.arange(len(self.x_list), len(self.x_list) + len(self.x_eval))
             self.sample_ids = np.arange(len(self.x_list) + len(self.x_eval))
@@ -279,20 +268,9 @@ class Cll4d1pInput(CLLInputBase):
             self.y_list.extend(self.y_eval)
             self.x_train = [self.x_list[idx] for idx in self.idxs_train]
             self.y_train = [self.y_list[idx] for idx in self.idxs_train]
-            # double check that I didnt accidentally put the oos data into train
-            # first assert to make sure this works with floats properly
-            # breaks the 2p code, so I commented out, but passes with the 1p code
-            #assert(np.array_equal(self.x_train[0], self.x_train[0]))
-            #for x_ev in self.x_eval:
-            #    for x_tr in self.x_train:
-            #        assert(not(np.array_equal(x_ev, x_tr)))
             print('%d samples in training data and %d samples in eval' %(len(self.x_train), len(self.x_eval)))
 
         elif self.split_fold_idxs is None:
-                # Note validation ids are now from 0-len(val) and the old data ids
-                # will be matched by their offset from len(val) -> len(val) + len(data_ids) -1
-                #self.x_list.extend(augment_x_list)
-                #self.y_list.extend(augment_y_list)
             idxs = np.arange(len(self.x_list))
             self.sample_ids = idxs
             self.x_train, self.x_eval, self.y_train, self.y_eval, self.idxs_train, self.idxs_eval = train_test_split(
@@ -329,25 +307,6 @@ class Cll4d1pInput(CLLInputBase):
                 self.idxs_train = np.concatenate([self.idxs_train, len(self.sample_ids) + augment_ids])
                 self.x_train.extend(augment_x_list)
                 self.y_train.extend(augment_y_list)
-                
-            ##self.x_train = [torch.tensor(_, dtype=torch.float32) for _ in self.x_train]
-            ##self.x_eval = [torch.tensor(_, dtype=torch.float32) for _ in self.x_eval]
-            ##self.y_train = torch.tensor(self.y_train, dtype=torch.float32)
-            ##self.y_eval = torch.tensor(self.y_eval, dtype=torch.float32)
-
-##        if torch.cuda.is_available():
-##            on_cuda_list_x_train = []
-##            on_cuda_list_x_eval = []
-##            for i in range(len(self.x_train)):
-##                on_cuda_list_x_train.append(self.x_train[i].cuda())
-##            if not (self.x_eval is None):
-##                for i in range(len(self.x_eval)):
-##                    on_cuda_list_x_eval.append(self.x_eval[i].cuda())
-##            self.x_train = on_cuda_list_x_train
-##            if not (self.x_eval is None):
-##                self.x_eval = on_cuda_list_x_eval
-##                self.y_eval = self.y_eval.cuda()
-##            self.y_train = self.y_train.cuda()
 
 class Cll8d1pInput(Cll4d1pInput):
     """
@@ -356,7 +315,6 @@ class Cll8d1pInput(Cll4d1pInput):
 
     def __init__(self, hparams, random_state=0, augment_data_paths=None, split_fold_idxs=None):
         self.hparams = hparams
-        # used to include dev data in training but not testing
         self.augment_data_paths = augment_data_paths
         self.random_state = random_state
         self.features = ['FSC-A', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b']
@@ -367,12 +325,6 @@ class Cll8d1pInput(Cll4d1pInput):
         self.unnormalized_x_list_of_numpy = deepcopy(self.x_list)
         self.y_numpy = deepcopy(self.y_list)
         self.reference_nested_list = self._get_reference_nested_list_()
-        #if hparams['init_type'] == 'heuristic_init':
-        #    self._normalize_()
-        #    self._get_init_nested_list_(hparams)
-        #else:
-        #    self._get_init_nested_list_(hparams)
-        #    self._normalize_()
         self.split(random_state=random_state)
 
         self._normalize_()
@@ -418,15 +370,6 @@ class Cll8d1pInput(Cll4d1pInput):
             with open(Y_DATA_PATH, 'rb') as f:
                 self.y_list = pickle.load(f)
 
-        else:
-            x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
-            x_8d = dh.filter_cll_8d_pb1(x)
-            with open(DATA_DIR + 'filtered_8d_1p_x_list.pkl', 'wb') as f:
-                pickle.dump(x_8d, f)
-            with open(DATA_DIR + 'y_1p_list.pkl', 'wb') as f:
-                pickle.dump(y, f)
-            self.x_list, self.y_list = x_8d, y
-
     def _get_reference_nested_list_(self):
         reference_nested_list = \
             [
@@ -449,6 +392,7 @@ class Cll8d1pInput(Cll4d1pInput):
                 ]
             ]
         return reference_nested_list
+
     def get_unnormalized_reference_tree(self):
         unnormalized_reference_list = self._get_reference_nested_list_()
         reference_tree = ReferenceTree(unnormalized_reference_list, self.feature2id)
@@ -501,10 +445,6 @@ class Cll8d1pInput(Cll4d1pInput):
 
         return gate_data_ids 
 
-    # I would add an optional argument for return type here:
-    # either numpy or tensor
-    # also right now uses all data so these should only be
-    # called when no testing data is used in the input object
     def get_pos_tr_data(self, return_numpy=False):
         pos_tr_data = \
             [
@@ -557,28 +497,7 @@ class Cll8d1pInput(Cll4d1pInput):
             corner[1] + size if corner[1] == 0 else 1.
         ]
         return gate
-    def _get_padhraics_init(self):
-        padhraics_init = \
-            [
-                [[u'SSC-H', 0., 0.3], [u'CD45', 0., .9]],
-                [
-                    [
-                        [[u'FSC-A', .3, 1.], [u'SSC-A', 0., .3]],
-                        [
-                            [
-                                [[u'CD5', 0., .9], [u'CD19', .5, 1.]],
-                                [
-                                    [
-                                        [[u'CD10', 0, .4], [u'CD79b', 0, .5]],
-                                        []
-                                    ]
-                                ]
-                            ]
-                        ]
-                    ]
-                ]
-            ]
-        return padhraics_init
+
 
     def _get_same_corners_as_DAFI_init(self):
 
@@ -728,12 +647,6 @@ class SynthInput(Cll8d1pInput):
         self.unnormalized_x_list_of_numpy = deepcopy(self.x_list)
         self.y_numpy = deepcopy(self.y_list)
         self.reference_nested_list = self._get_reference_nested_list_()
-        #if hparams['init_type'] == 'heuristic_init':
-        #    self._normalize_()
-        #    self._get_init_nested_list_(hparams)
-        #else:
-        #    self._get_init_nested_list_(hparams)
-        #    self._normalize_()
         self.split(random_state=random_state)
         self._normalize_()
         print(self.reference_nested_list)
@@ -787,9 +700,6 @@ class SynthInput(Cll8d1pInput):
                             [
                                 [[[u'M7', 1.75, 3.25], [u'M8', 1.75, 3.25]], []]
                             ]
-                        
-
-    
                     ]
                     
                 ]
@@ -810,9 +720,6 @@ class SynthInput(Cll8d1pInput):
                             [
                                 [[[u'M7', gate4[0], gate4[1]], [u'M8', gate4[2], gate4[3]]], []]
                             ]
-                            
-
-        
                         ]
                         
             ]
@@ -839,14 +746,6 @@ class SynthInput(Cll8d1pInput):
             with open(Y_DATA_PATH, 'rb') as f:
                 self.y_list = pickle.load(f)
 
-        else:
-            x, y = dh.load_cll_data_1p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR, self.features_full)
-            x_8d = dh.filter_cll_8d_pb1(x)
-            with open(DATA_DIR + 'filtered_8d_1p_x_list.pkl', 'wb') as f:
-                pickle.dump(x_8d, f)
-            with open(DATA_DIR + 'y_1p_list.pkl', 'wb') as f:
-                pickle.dump(y, f)
-            self.x_list, self.y_list = x_8d, y
 class Cll4d2pInput(CLLInputBase):
     """
     The basic idea is to replace self.feaures, self.features_full, self.feature2id, self.x_list, self.y_list etc. with
@@ -980,8 +879,6 @@ class Cll4d2pInput(CLLInputBase):
 
 
     def split(self, random_state=123):
-        print(np.array(self.x_list).shape)
-        print(np.array(self.y_list).shape)
         self.x_train, self.x_eval, self.y_train, self.y_eval = train_test_split(np.array(self.x_list), self.y_list,
                                                                                 test_size=self.hparams['test_size'],
                                                                                 random_state=random_state)
@@ -1023,8 +920,6 @@ class Cll2pFullInput(Cll4d2pInput):
         CYTOMETRY_DIR_PB1 = DATA_DIR + "PB1_whole_mqian/"
         CYTOMETRY_DIR_PB2 = DATA_DIR + "PB2_whole_mqian/"
         DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
-        # self.x_list = [[x_pb1_idx, x_pb2_idx] for idx in range(n_samples)] # x_pb1_idx, x_pb2_idx are numpy arrays
-        # self.y_list = [y_idx for idx in range(n_samples)]
         if self.hparams['load_from_pickle']:
             with open(DATA_DIR + "filtered_2p_full_x_list.pkl", 'rb') as f:
                 self.x_list = pickle.load(f)
@@ -1197,31 +1092,14 @@ class CllBothPanelsInput(Cll8d1pInput):
         X_DATA_PATH = self.hparams['data']['features_path']
         Y_DATA_PATH = self.hparams['data']['labels_path']
 
-        # self.x_list = [[x_pb1_idx, x_pb2_idx] for idx in range(n_samples)] # x_pb1_idx, x_pb2_idx are numpy arrays
-        # self.y_list = [y_idx for idx in range(n_samples)]
         if self.hparams['load_from_pickle']:
             with open(X_DATA_PATH, 'rb') as f:
                 self.x_list = pickle.load(f)
                 print('Number of samples: %d' %(len(self.x_list)))
             with open(Y_DATA_PATH, 'rb') as f:
                 self.y_list = pickle.load(f)
-        else:
-            x, y = dh.load_cll_data_2p(DIAGONOSIS_FILENAME, CYTOMETRY_DIR_PB1, CYTOMETRY_DIR_PB2,
-                                       self.features_full[0], self.features_full[1])
-            ### Here we want to just filter the 
-            x_8d_pb1 = dh.filter_cll_8d_pb1([_[0] for _ in x])
-            x_10d_pb2 = dh.filter_cll_10d_pb2([_[1] for _ in x])
-            x_2p = [[x_8d_pb1[sample_idx], x_10d_pb2[sample_idx]] for sample_idx in range(len(x_8d_pb1))]
-            with open(DATA_DIR + 'filtered_2p_full_x_list.pkl', 'wb') as f:
-                pickle.dump(x_2p, f)
-            with open(DATA_DIR + 'y_2p_list.pkl', 'wb') as f:
-                pickle.dump(y, f)
-            self.x_list, self.y_list = x_2p, y
 
     def _construct_(self):
-        #self.reference_tree = [ReferenceTree(self.reference_nested_list[i], self.feature2id[i])
-        #                       for i in range(self.n_panels)]
-        #self.init_tree = [ReferenceTree(self.init_nested_list[i], self.feature2id[i]) for i in range(self.n_panels)]
         self.reference_tree = ReferenceTreeBoth(self.reference_nested_list, self.feature2id)
         self.init_tree = ReferenceTreeBoth(self.init_nested_list, self.feature2id)
         if self.hparams['dafi_init']:
@@ -1241,7 +1119,6 @@ class CllBothPanelsInput(Cll8d1pInput):
     
     def _normalize_data_tr_and_nested_list(self):
         self.x_train, offset, scale = dh.normalize_x_list_multiple_panels(self.x_train)
-        #print(self.feature2id, offset, scale, self.reference_nested_list)
         self.reference_nested_list = dh.normalize_nested_tree_both_panels(self.reference_nested_list, offset, scale,
                                                               self.feature2id)
         if not (self.hparams['init_type'] == 'random_corner' or self.hparams['init_type'] == 'same_corners_as_DAFI' or self.hparams['init_type'] == 'padhraics_init' or self.hparams['init_type'] == 'heuristic_init'):
@@ -1288,18 +1165,15 @@ class CllBothPanelsInput(Cll8d1pInput):
             raise NotImplementedError('Non-heuristic initializion not implemented for both panel input object')
 
     def _get_heuristic_init(self):
-        # idea is to get heuristic initializations for all P1 nodes like normal,
-        # and for panel two leaves to just consider points in the upper portion of
-        # the grid of points using a specially created hueristic init object
-        
-        print('All gate ids are')
+        # Idea is to initialize the earlier nodes that use both panels
+        # using data from both panels, and then to initialize nodes
+        # that just use either p1 or p2 separately
         gate_ids_both = self.get_gate_data_ids_both()
-        print(gate_ids_both)
         data_for_init_pos, data_for_init_neg = self._get_concatenated_data_for_init()
 
         heuristic_initializer_both = HeuristicInitializer(
             self.hparams['node_type'],
-            gate_ids_both, # check this
+            gate_ids_both, 
             np.concatenate(data_for_init_pos),
             np.concatenate(data_for_init_neg),
             num_gridcells_per_axis = self.hparams['heuristic_init']['num_gridcells_per_axis'],
@@ -1327,7 +1201,6 @@ class CllBothPanelsInput(Cll8d1pInput):
         print(flat_gates)
         self.flat_heuristic_gates = flat_gates
         init_nested_list = self._convert_flattened_list_to_nested_(flat_gates)
-        #init_nested_list = dh.normalize_nested_tree_both_panels(nested_list, self.offset, self.scale, self.feature2id)
 
         return init_nested_list
 
@@ -1403,21 +1276,6 @@ class CllBothPanelsInput(Cll8d1pInput):
         x_cat_list_neg = [x_cat for i, x_cat in enumerate(x_cat_list) if self.y_train[i] == 0]
         return x_cat_list_pos, x_cat_list_neg
 
-
-
-        
-
-
-#        initializer_p1_and_38_20 = HeuristicInitializerBoth(
-#            self.hparams['node_type'],
-#            gate_ids,
-#            self.x_train,
-#            self.y_train,
-#            num_gridcells_per_axis = self.hparams['heuristic_init']['num_gridcells_per_axis'],
-#            greedy_filtering = self.hparams['heuristic_init']['use_greedy_filtering'],
-#            consider_all_gates=self.hparams['heuristic_init']['consider_all_gates'],
-#            filter_func= self.hparams['heuristic_init']['filter_func']
-#        )
     
     def _get_reference_nested_list_(self):
         self.reference_nested_list = \
