@@ -18,13 +18,15 @@ default_hparams = {
     'logistic_k_dafi': 10000,
     'regularization_penalty': 0,
     'negative_box_penalty': 0.0,
-    'negative_proportion_default': 0.0001,
+    'init_reg_penalty': 0.0,
+    'neg_proportion_default': 0.0001,
     'positive_box_penalty': 0.0,
     'corner_penalty': .0,
     'feature_diff_penalty': 0.,
     'gate_size_penalty': .0,
     'gate_size_default': (0.5, 0.5),
     'load_from_pickle': True,
+    'node_type': 'square',
     'dafi_init': False,
     'optimizer': "Adam",  # or Adam, SGD
     'loss_type': 'logistic',  # or MSE
@@ -39,10 +41,13 @@ default_hparams = {
     'experiment_name': 'default',
     'random_state': 123,
     'n_run': 2,
-    'init_type': 'random_corner',
+    'init_type': 'heuristic_init',
     'corner_init_deterministic_size': .75,
-    'train_alternate': True,
-    'run_logistic_to_convergence': False,
+    'train_alternate': False,
+    'run_logistic_to_convergence': True,
+    'augment_training_with_dev_data': False,
+    'filter_uncertain_samples': False,
+    'device': 0, 
     'output': {
         'type': 'full'
     },
@@ -58,6 +63,11 @@ default_hparams = {
     'plot_params':{
         'figsize': [10, 10],
         'marker_size': .01,
+    },
+    'heuristic_init': {
+        'num_gridcells_per_axis': 4,
+        'use_greedy_filtering': False,
+        'consider_all_gates': False
     },
     'use_out_of_sample_eval_data': False,
     'dictionary_is_broken': False
@@ -218,7 +228,8 @@ if __name__ == '__main__':
     #yaml_filename = '../configs/Final_Model.yaml'
     #yaml_filename = '../configs/FINAL_MODEL_middle_init.yaml'
     #yaml_filename = '../configs/OOS_Final_Model.yaml'
-    yaml_filename = '../configs/testing_full_1p.yaml'
+    #yaml_filename = '../configs/testing_full_1p.yaml'
+    yaml_filename = '../configs/default_p1.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)

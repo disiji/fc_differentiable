@@ -1,8 +1,9 @@
 import pickle
 import yaml
-DEFAULT_HPARAMS =  {
+
+default_hparams = {
     'logistic_k': 100,
-    'logistic_k_dafi': 1000,
+    'logistic_k_dafi': 10000,
     'regularization_penalty': 0,
     'negative_box_penalty': 0.0,
     'negative_proportion_default': 0.0001,
@@ -46,6 +47,8 @@ DEFAULT_HPARAMS =  {
         'figsize': [10, 10],
         'marker_size': .01,
     },
+    'use_out_of_sample_eval_data': False,
+    'dictionary_is_broken': False
 }
 
 class ParameterParser:

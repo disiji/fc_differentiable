@@ -498,7 +498,7 @@ class ModelTree(nn.Module):
             cur_data = data_stack.pop()
             filtered_data.append(self.filter_data_at_single_node(cur_data, node))
 
-            for child in self.children_dict[str(id(node))]:
+            for child in self.children_dict[self.get_node_idx(node)]:
                 node_stack.append(child)
                 # push the same data onto the stack since the
                 # children share the same parent
@@ -522,7 +522,7 @@ class ModelTree(nn.Module):
             node = node_stack.pop()
             outputs.append(function(node))
 
-            for child in self.children_dict[str(id(node))]:
+            for child in self.children_dict[self.get_node_idx(node)]:
                 node_stack.append(child)
 
         return outputs
@@ -716,7 +716,7 @@ class ModelTree(nn.Module):
         return output
 
 
-    def forward(self, x, y=None, detach_logistic_params=False, use_hard_proportions=False):
+    def forward(self, x, y=None, detach_logistic_params=False, use_hard_proportions=False, device=0):
         """
 
         :param x: a list of tensors
@@ -741,15 +741,15 @@ class ModelTree(nn.Module):
 
 
         tensor = torch.tensor((), dtype=torch.float32)
-        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features)).cuda()
+        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features)).cuda(device)
         if torch.cuda.is_available():
-            leaf_probs.cuda()
+            leaf_probs.cuda(device)
 
         for sample_idx in range(len(x)):
 
             this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)))]
             if torch.cuda.is_available():
-                this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)).cuda())]
+                this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)).cuda(device))]
             leaf_idx = 0
             while this_level:
                 next_level = list()

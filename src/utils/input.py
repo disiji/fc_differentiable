@@ -115,12 +115,6 @@ class Cll4d1pInput(CLLInputBase):
         else:
             self.init_nested_list = self._get_middle_plots_init_nested_list_()
     
-    # Afaik we can delete this
-    #def get_random_boundary(self):
-    #    b1 = np.random.randint(5)
-    #    b2 = np.random.randint(b1, 5)
-    #    return np.array([b1, b2])
-
 
     def _get_random_init_nested_list_(self, size_mean, size_var, cut_var, min_size=.1, max_cut=5000):
         middle_gates = self._get_middle_plots_flattened_list_()
@@ -154,7 +148,7 @@ class Cll4d1pInput(CLLInputBase):
                 cur_cuts[last_cut_to_sample] = cur_cuts[3] - size/(cur_cuts[1] - cur_cuts[0]) 
             elif last_cut_to_sample == 3:#upper boundary
                 cur_cuts[last_cut_to_sample] = cur_cuts[2] + size/(cur_cuts[1]- cur_cuts[0])
-            assert(np.abs((cur_cuts[1] - cur_cuts[0]) * (cur_cuts[3] - cur_cuts[2]) - size) < 1e-3) #make sure it has the size
+            assert(np.abs((cur_cuts[1] - cur_cuts[0]) * (cur_cuts[3] - cur_cuts[2]) - size) < 1e-3) #make sure it has the correct size
             random_gate_flat_init.append(cur_cuts)
             if cur_cuts[last_cut_to_sample] < 0 or cur_cuts[last_cut_to_sample] > max_cut:
                 print('meow')
@@ -341,20 +335,6 @@ class Cll8d1pInput(Cll4d1pInput):
             self.x = on_cuda_list_x_all
             self.y = self.y.cuda()
 
-    '''
-    filter out training data which the filter model is uncertain about
-    '''
-    def filter_samples_with_large_uncertainty(self, model_tree_filter, minimum_samples_frac_left=1/3):
-        output = model_tree_filter(self.x_train, self.y_train)
-        probs_pos = output['preds']
-        filter_idxs = [i for i, prob in enumerate(probs_pos) if torch.abs(prob - 0.5) <= hparams['data_filtering_thresh']]
-        if len(filter_idxs)/len(self.x_train) < (1. - minimum_samples_frac_left):
-            self.x_train = [self.x_train[i] for i in filter_idxs]
-            self.y_train = [self.y_train[i] for i in filter_idxs]
-
-        
-
-
     def _load_data_(self, hparams):
         X_DATA_PATH = hparams['data']['features_path']
         Y_DATA_PATH = hparams['data']['labels_path']
@@ -364,11 +344,10 @@ class Cll8d1pInput(Cll4d1pInput):
 
         # x: a list of samples, each entry is a numpy array of shape n_cells * n_features
         # y: a list of labels; 1 is CLL, 0 is healthy
-        if self.hparams['load_from_pickle']:
-            with open(X_DATA_PATH, 'rb') as f:
-                self.x_list = pickle.load(f)
-            with open(Y_DATA_PATH, 'rb') as f:
-                self.y_list = pickle.load(f)
+        with open(X_DATA_PATH, 'rb') as f:
+            self.x_list = pickle.load(f)
+        with open(Y_DATA_PATH, 'rb') as f:
+            self.y_list = pickle.load(f)
 
     def _get_reference_nested_list_(self):
         reference_nested_list = \
@@ -399,20 +378,11 @@ class Cll8d1pInput(Cll4d1pInput):
         return reference_tree
 
     def _get_init_nested_list_(self, hparams):
-        if hparams['init_type'] == 'random':
-            size_mean = 2000 * 2000
-            size_var = 600 * 600 #about a third of the mean
-            cut_var = 400 #about one tenth of the range
-            min_size = 500 * 500
-            self.init_nested_list = self._get_random_init_nested_list_(size_mean, size_var, cut_var, min_size=3)
-        elif hparams['init_type'] == 'random_corner':
+        if hparams['init_type'] == 'random_corner':
             self.init_nested_list = self._get_random_corner_init(size_default=hparams['corner_init_deterministic_size'])
         elif hparams['init_type'] == 'same_corners_as_DAFI':
             self.init_nested_list = self._get_same_corners_as_DAFI_init()
-        elif hparams['init_type'] == 'padhraics_init':
-            self.init_nested_list = self._get_padhraics_init()
         elif hparams['init_type'] == 'heuristic_init':
-            
             self.init_nested_list = self._get_heuristic_init()
         elif hparams['init_type'] == 'middle_init':
             self.init_nested_list = self._get_middle_plots_init_nested_list_()
@@ -539,48 +509,6 @@ class Cll8d1pInput(Cll4d1pInput):
         print('random flat gates is: ', random_flat_gates)
         return (self._convert_flattened_list_to_nested_(random_flat_gates))
 
-
-
-
-    def _get_random_init_nested_list_(self, size_mean, size_var, cut_var, min_size=.1, max_cut=5000):
-        middle_gates = self._get_middle_plots_flattened_list_()
-        random_gate_flat_init = []
-        for gate in middle_gates:
-            size = min_size
-            while size <= min_size:
-                size = np.random.normal(size_mean, size_var)
-            last_cut_to_sample = np.random.randint(0, len(gate))
-            num_iters_in_while = 0
-            cuts_in_order = False
-            while not cuts_in_order:
-                cur_cuts = -1 * np.ones(4)
-                for i in range(len(gate)):
-                    if i == last_cut_to_sample:
-                        continue
-                    while cur_cuts[i] < 0:
-                        cur_cuts[i] = np.random.normal(gate[i], cut_var)
-#                        print(cur_cuts[i], gate[i])
-                cuts_in_order = (cur_cuts[1] > cur_cuts[0]) if (last_cut_to_sample == 3 or last_cut_to_sample == 2) else (cur_cuts[3] > cur_cuts[2])
-                num_iters_in_while += 1
-                if num_iters_in_while > 10:
-                    raise ValueError('The cut variance is way too large, try lowering it.')
-
-            #now do the four cases from scratch work
-            if last_cut_to_sample == 0:#lower boundary
-                cur_cuts[last_cut_to_sample] = cur_cuts[1] - size/(cur_cuts[3] - cur_cuts[2])
-            elif last_cut_to_sample == 1:#upper boundary
-                cur_cuts[last_cut_to_sample] = size/(cur_cuts[3] - cur_cuts[2]) + cur_cuts[0]
-            elif last_cut_to_sample == 2:#lower boundary
-                cur_cuts[last_cut_to_sample] = cur_cuts[3] - size/(cur_cuts[1] - cur_cuts[0]) 
-            elif last_cut_to_sample == 3:#upper boundary
-                cur_cuts[last_cut_to_sample] = cur_cuts[2] + size/(cur_cuts[1]- cur_cuts[0])
-            assert(np.abs((cur_cuts[1] - cur_cuts[0]) * (cur_cuts[3] - cur_cuts[2]) - size) < 1e-3) #make sure it has the size
-            random_gate_flat_init.append(cur_cuts)
-            if cur_cuts[last_cut_to_sample] < 0 or cur_cuts[last_cut_to_sample] > max_cut:
-                print('meow')
-                return self._get_random_init_nested_list_(size_mean, size_var, cut_var, min_size=min_size)
-        print(random_gate_flat_init)
-        return (self._convert_flattened_list_to_nested_(random_gate_flat_init))
 
     def _convert_flattened_list_to_nested_(self, random_gates):
         nested_list = \
@@ -1059,18 +987,6 @@ class CllBothPanelsInput(Cll8d1pInput):
 
         self.y = torch.tensor(self.y_list, dtype=torch.float32)
 
-        size=.0003
-        plt.scatter(self.x[0][1][:, 1], self.x[0][1][:, 2], s=size)
-        plt.savefig('testing.png')
-        size=.0003
-        plt.scatter(self.x[0][0][:, 1], self.x[0][0][:, 2], s=size)
-        plt.savefig('testing2.png')
-        size=.0003
-        plt.scatter(self.x[0][1][:, 0], self.x[0][1][:, 3], s=size)
-        plt.savefig('testing3.png')
-        size=.0003
-        plt.scatter(self.x[0][0][:, 0], self.x[0][0][:, 3], s=size)
-        plt.savefig('testing4.png')
 
     def _fill_empty_samples_(self):
         for panel_id in range(2):

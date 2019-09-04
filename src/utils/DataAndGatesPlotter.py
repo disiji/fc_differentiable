@@ -23,7 +23,6 @@ class DataAndGatesPlotter():
         self.model = model
         self.data = data
         self.gates = self.construct_gates()
-        print([[gate.low1, gate.upp1, gate.low2, gate.upp2] for gate in self.gates])
         self.filtered_data = self.filter_data_by_model_gates()
         self.dims = self.get_dims()
         self.color = color
@@ -114,7 +113,7 @@ class DataAndGatesPlotter():
             else:
                 outputs.append(function(node))
 
-            for child in self.model.children_dict[str(id(node))]:
+            for child in self.model.children_dict[self.model.get_node_idx(node)]:
                 node_stack.append(child)
                 if function_uses_data:
                     # push the same data onto the stack since the
@@ -205,10 +204,8 @@ class DataAndGatesPlotterBoth(DataAndGatesPlotter):
         self.data = data_both
         self.nodes = self.get_nodes()
         self.gates = self.construct_gates()
-        print([[gate.low1, gate.upp1, gate.low2, gate.upp2] for gate in self.gates])
         self.filtered_data = self.filter_data_by_model_gates(data_both)
         self.dims = self.get_dims()
-        print(self.dims)
         self.color = color
 
         # modification needed to plot reference tree objects

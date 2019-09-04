@@ -40,7 +40,7 @@ class Tracker():
         self.neg_prop_loss.append(output['emp_reg_loss'].cpu().detach())
         self.acc.append(sum(y_pred == y_true.cpu().numpy()) * 1.0 / y_true.shape[0])
         self.roc_auc_score.append(roc_auc_score(y_true.cpu().detach().numpy(), y_pred, average='macro'))
-        if not type(output['init_reg_loss']) == int:
+        if not (type(output['init_reg_loss']) == int or type(output['init_reg_loss']) == float):
             self.init_reg_loss.append(output['init_reg_loss'].cpu().detach())
             self.corner_reg_loss.append(output['corner_reg_loss'].cpu().detach())
             self.ref_reg_loss.append(output['ref_reg_loss'].cpu().detach())
