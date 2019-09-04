@@ -107,8 +107,6 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint, return_
         )
     else:
         model = model
-#    if hparams['two_phase_training'] == False:
-#        raise ValueError('Only call run_train_model_two_phase with two phase setup in yaml!')
     classifier_params = [model.linear.weight, model.linear.bias]
     gates_params = [p for p in model.parameters() if not any(p is d_ for d_ in classifier_params)]
 
@@ -119,7 +117,6 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint, return_
         optimizer_classifier = torch.optim.Adam(classifier_params, lr=hparams['learning_rate_classifier'])
         optimizer_gates = torch.optim.Adam(gates_params, lr=hparams['learning_rate_gates'])
 
-    # optimal gates
     train_tracker = Tracker()
     eval_tracker = None
     if not((input.x_eval is None) and (input.split_fold_idxs is None)):
@@ -136,11 +133,6 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint, return_
 
     if torch.cuda.is_available():
         model.cuda()
-        #train_tracker.cuda()
-        #eval_tracker.cuda()
-        #optimizer_classifier.cuda()
-        #optimizer_gates.cuda()
-        #model_checkpoint_dict.cuda()
     if return_new_model:
         return model, train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict
     else:
@@ -171,7 +163,6 @@ def run_train_dafi_logreg_to_conv(dafi_model, hparams, input):
     train_tracker.update(dafi_model, dafi_model(input.x_train, input.y_train, use_hard_proportions=True), input.y_train, 0, 1)
     eval_tracker.update(dafi_model, dafi_model(input.x_eval, input.y_eval, use_hard_proportions=True), input.y_eval, 0, 1)
     output_detached = dafi_model(input.x_train, input.y_train, detach_logistic_params=True, use_hard_proportions=True)
-    #log_hard_proportions = np.log(dafi_model.get_hard_proportions(input.x_train))
     run_train_only_logistic_regression(
             dafi_model, 
             input.x_train,
@@ -199,12 +190,7 @@ def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=
         run_train_only_logistic_regression(model, x_train, y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
         output = model(x_train, y_train)
         loss = output['loss']
-        #print('backwards call')
         loss.backward()
-        #for node in model.get_list_of_model_nodes():
-        #    nn.utils.clip_grad_norm_(node.parameters(), gradient_clipping)
-            #print(node.center1_param.grad)
-        #nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
         optimizer_gates.step()
 
         # print every n_batch_print mini-batches
@@ -259,7 +245,6 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
         optimizer_classifier = torch.optim.Adam(classifier_params, lr=hparams['learning_rate_classifier'])
         optimizer_gates = torch.optim.Adam(gates_params, lr=hparams['learning_rate_gates'])
 
-    # optimal gates
     train_tracker = Tracker()
     eval_tracker = None
     if not(hparams['test_size'] == 0.):
@@ -295,7 +280,6 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
             optimizer_classifier.zero_grad()
             x_batch = [x_train[j] for j in idx_batch]
             y_batch = y_train[idx_batch]
-#            output = model([x_train[j] for j in idx_batch], y_train[idx_batch])
             if hparams['run_logistic_to_convergence']:
                 output_detached = model(x_batch, y_batch, detach_logistic_params=True)
                 output = model(x_batch, y_batch)
@@ -311,7 +295,6 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
             loss.backward()
             if hparams['train_alternate'] == True:
                 if hparams['run_logistic_to_convergence'] == True:
-                    #kinda odd that this function uses its own optimizer in this case, may want to scrutinize this later
                     run_train_only_logistic_regression(model, x_batch, y_batch, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
                     optimizer_gates.step()
                 else:
@@ -331,7 +314,6 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
             if not(hparams['test_size'] == 0.):
                 eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, i)
 
-            # compute
             if hparams['test_size'] == 0.:
                 loss_tuple = (epoch, i, 'full loss:', train_tracker.loss[-1], 'ref_reg:', train_tracker.ref_reg_loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'corner_reg:', train_tracker.corner_reg_loss[-1], 'acc:', train_tracker.acc[-1])
                 print('[Epoch %d, batch %d] %s %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
@@ -347,9 +329,6 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
                 print('[Epoch %d, batch %d] training, eval acc: %.3f, %.3f' % (
                     epoch, i, train_tracker.acc[-1], eval_tracker.acc[-1]))
 
-        # epoch_list = [0, 100, 300, 500, 1000, 1500, 2000]
-        # epoch_list = [0, 100, 200, 300, 500, 700, 1000]
-        #epoch_list = [0, 50, 100, 200, 300, 400, 500]
         epoch_list = hparams['seven_epochs_for_gate_motion_plot']
         if model_checkpoint:
             if epoch+1 in epoch_list:#[100, 200, 300, 400, 500, 600]:
@@ -611,5 +590,3 @@ def run_write_prediction(model_tree, dafi_tree, input, hparams):
     plt.title('features for each sample')
     plt.savefig('../output/%s/features_scatter_for_most_recent_run.png' %hparams['experiment_name'])
 
-if __name__ == '__main__':
-    test_overlap_p1_single_node()
