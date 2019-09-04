@@ -1,7 +1,7 @@
 import numpy as np
 
 '''
-model1/model2: ModelTree objects to compare the overlap from their gates
+model1/model2: ModelTree objects to compare the cell overlaps for their gates
 data_list: list of numpy arrays of data per sample
 '''
 class CellOverlaps:
