@@ -160,9 +160,9 @@ def run_train_dafi_logreg_to_conv(dafi_model, hparams, input):
     train_tracker = Tracker()
     train_tracker.model_init = deepcopy(dafi_model)
     eval_tracker.model_init = deepcopy(dafi_model)
-    train_tracker.update(dafi_model, dafi_model(input.x_train, input.y_train, use_hard_proportions=True), input.y_train, 0, 1)
-    eval_tracker.update(dafi_model, dafi_model(input.x_eval, input.y_eval, use_hard_proportions=True), input.y_eval, 0, 1)
-    output_detached = dafi_model(input.x_train, input.y_train, detach_logistic_params=True, use_hard_proportions=True)
+    train_tracker.update(dafi_model, dafi_model(input.x_train, input.y_train, use_hard_proportions=True, device=hparams['device']), input.y_train, 0, 1)
+    eval_tracker.update(dafi_model, dafi_model(input.x_eval, input.y_eval, use_hard_proportions=True, device=hparams['device']), input.y_eval, 0, 1)
+    output_detached = dafi_model(input.x_train, input.y_train, detach_logistic_params=True, use_hard_proportions=True, device=hparams['device'])
     run_train_only_logistic_regression(
             dafi_model, 
             input.x_train,
@@ -171,8 +171,8 @@ def run_train_dafi_logreg_to_conv(dafi_model, hparams, input):
             verbose=False,
             log_features = output_detached['leaf_logp']
     )
-    train_tracker.update(dafi_model, dafi_model(input.x_train, input.y_train, use_hard_proportions=True), input.y_train, 0, 1)
-    eval_tracker.update(dafi_model, dafi_model(input.x_eval, input.y_eval, use_hard_proportions=True), input.y_eval, 0, 1)
+    train_tracker.update(dafi_model, dafi_model(input.x_train, input.y_train, use_hard_proportions=True, device=hparams['device']), input.y_train, 0, 1)
+    eval_tracker.update(dafi_model, dafi_model(input.x_eval, input.y_eval, use_hard_proportions=True, device=hparams['device']), input.y_eval, 0, 1)
     return dafi_model, train_tracker, eval_tracker
 
 def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=False, gradient_clipping=10):
@@ -186,9 +186,9 @@ def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=
 
         optimizer_gates.zero_grad()
         optimizer_classifier.zero_grad()
-        output_detached = model(x_train, y_train, detach_logistic_params=True)
+        output_detached = model(x_train, y_train, detach_logistic_params=True, device=hparams['device'])
         run_train_only_logistic_regression(model, x_train, y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
-        output = model(x_train, y_train)
+        output = model(x_train, y_train, device=hparams['device'])
         loss = output['loss']
         loss.backward()
         optimizer_gates.step()
@@ -196,9 +196,9 @@ def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=
         # print every n_batch_print mini-batches
         if epoch % hparams['n_epoch_eval'] == 0:
             # stats on train
-            train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, 1)
+            train_tracker.update(model, model(input.x_train, input.y_train, device=hparams['device']), input.y_train, epoch, 1)
             if not((input.x_eval is None) and (input.split_fold_idxs is None)):
-                eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, 1)
+                eval_tracker.update(model, model(input.x_eval, input.y_eval, device=hparams['device']), input.y_eval, epoch, 1)
 
             loss_tuple = (epoch, 1, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1], 'init_reg', train_tracker.init_reg_loss[-1], 'prop_diff_reg:', train_tracker.feature_diff_loss[-1])
             print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
@@ -213,12 +213,12 @@ def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=
     # train the logistic regressor one more time with hard weights?
     # update the logistic weights to the current
     # features
-    output_detached = model(input.x_train, input.y_train, detach_logistic_params=True)
+    output_detached = model(input.x_train, input.y_train, detach_logistic_params=True, device=hparams['device'])
     run_train_only_logistic_regression(model, input.x_train, input.y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
     # update trackers one more time 
-    train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, 1)
+    train_tracker.update(model, model(input.x_train, input.y_train, device=hparams['device']), input.y_train, epoch, 1)
     if not((input.x_eval is None) and (input.split_fold_idxs is None)):
-        eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, 1)
+        eval_tracker.update(model, model(input.x_eval, input.y_eval, device=hparams['device']), input.y_eval, epoch, 1)
 
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))
 
