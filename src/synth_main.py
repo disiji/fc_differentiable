@@ -130,7 +130,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
 if __name__ == '__main__':
     #yaml_filename = '../configs/Final_Model.yaml'
-    yaml_filename = '../configs/synth_plot.yaml'
+    yaml_filename = '../configs/default_synth.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)

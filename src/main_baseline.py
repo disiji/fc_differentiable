@@ -523,8 +523,8 @@ if __name__ == '__main__':
 #    path_to_hparams_for_input = '../configs/Reg_CV_device1.yaml'
 
     # use these two for baseline plots
-    path_to_model_params = '../configs/baseline_plot_model.yaml'
-    path_to_hparams_for_input = '../configs/baseline_plot.yaml'
+    path_to_model_params = '../configs/default_baseline.yaml'
+    path_to_hparams_for_input = '../configs/default_baseline_model.yaml'
 
     hparams = default_hparams
     with open(path_to_hparams_for_input, "r") as f_in:

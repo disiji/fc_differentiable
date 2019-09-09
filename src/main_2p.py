@@ -152,11 +152,6 @@ def run_both_panels(hparams, random_state_start=0, model_checkpoint=True):
         
 
 if __name__ == '__main__':
-    #yaml_filename = '../configs/Final_Model.yaml'
-    #yaml_filename = '../configs/FINAL_MODEL_middle_init.yaml'
-    #yaml_filename = '../configs/both_panels.yaml'
-    #yaml_filename = '../configs/example_both_panels.yaml'
-    #yaml_filename = '../configs/OOS_both_panels.yaml'
     yaml_filename = '../configs/default_2p.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:

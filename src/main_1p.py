@@ -17,12 +17,12 @@ default_hparams = {
     'logistic_k': 100,
     'logistic_k_dafi': 10000,
     'regularization_penalty': 0,
-    'negative_box_penalty': 0.0,
+    'negative_box_penalty': 0.001,
     'init_reg_penalty': 0.0,
     'neg_proportion_default': 0.0001,
     'positive_box_penalty': 0.0,
     'corner_penalty': .0,
-    'feature_diff_penalty': 0.,
+    'feature_diff_penalty': 0.001,
     'gate_size_penalty': .0,
     'gate_size_default': (0.5, 0.5),
     'load_from_pickle': True,
@@ -225,11 +225,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
 
 if __name__ == '__main__':
-    #yaml_filename = '../configs/Final_Model.yaml'
-    #yaml_filename = '../configs/FINAL_MODEL_middle_init.yaml'
-    #yaml_filename = '../configs/OOS_Final_Model.yaml'
-    #yaml_filename = '../configs/testing_full_1p.yaml'
-    yaml_filename = '../configs/default_p1.yaml'
+    yaml_filename = '../configs/default_1p.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
