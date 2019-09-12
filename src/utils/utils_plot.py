@@ -1,17 +1,76 @@
 import matplotlib
+import os
+import numpy as np
+import yaml
+import pickle
 
 matplotlib.use('Agg')
 matplotlib.rcParams['font.size'] = 10
 matplotlib.rcParams['font.family'] = 'serif'
 
+from matplotlib.transforms import Bbox as Bbox
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+#from train import run_train_only_logistic_regression
 import torch.nn.functional as F
+import torch.nn as nn
 import torch
 from math import *
 import utils.utils_load_data as dh
+from utils.DataAndGatesPlotter import *
+#from main_1p_full import default_hparams
+from  utils.input import *
+from utils.ParameterParser import ParameterParser
+from utils.bayes_gate import ModelTree
+from copy import deepcopy
+from utils.CellOverlaps import CellOverlaps
+import time
 
+
+default_hparams = {
+    'logistic_k': 100,
+    'logistic_k_dafi': 1000,
+    'regularization_penalty': 0,
+    'negative_box_penalty': 0.0,
+    'positive_box_penalty': 0.0,
+    'corner_penalty': .0,
+    'gate_size_penalty': .0,
+    'gate_size_default': (0.5, 0.5),
+    'load_from_pickle': True,
+    'dafi_init': False,
+    'optimizer': "Adam",  # or Adam, SGD
+    'loss_type': 'logistic',  # or MSE
+    'n_epoch_eval': 100,
+    'n_mini_batch_update_gates': 50,
+    'learning_rate_classifier': 0.05,
+    'learning_rate_gates': 0.05,
+    'batch_size': 10,
+    'n_epoch': 1000, 
+    'seven_epochs_for_gate_motion_plot': [0, 50, 100, 200, 300, 400, 500],
+    'test_size': 0.20,
+    'experiment_name': 'default',
+    'random_state': 123,
+    'n_run': 2,
+    'train_alternate': True,
+    'run_logistic_to_convergence': False,
+    'output': {
+        'type': 'full'
+    },
+    'annealing': {
+        'anneal_logistic_k': False,
+        'final_k': 1000,
+        'init_k': 1
+    },
+    'two_phase_training': {
+        'turn_on': False,
+        'num_only_log_loss_epochs': 50
+    },
+    'plot_params':{
+        'figsize': [10, 10],
+        'marker_size': .01,
+    },
+}
 
 def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, normalized=True):
     """
@@ -29,7 +88,7 @@ def plot_gates(x1, x2, gates, gate_names, id2feature, ax=None, filename=None, no
     if ax == None:
         fig, ax = plt.subplots(1)
     # Add scatter plot
-    ax.scatter(x1, x2, s=1)
+    ax.scatter(x1.cpu(), x2.cpu(), s=1)
     n_gates = len(gates)
     colors = ["black", "red", "red", "blue", "purple"]
     linestyles = ['solid', 'dashed', 'solid', 'solid', 'solid']
@@ -297,6 +356,7 @@ def plot_cll_1p_light(normalized_x, filtered_normalized_x, y, FEATURES, model_tr
     fig_root_neg.savefig(figname_root_neg)
     fig_leaf_pos.savefig(figname_leaf_pos)
     fig_leaf_neg.savefig(figname_leaf_neg)
+
 
 
 def plot_motion_p1(input, epoch_list, model_checkpoint_dict, filename):
@@ -592,3 +652,878 @@ def plot_motion_p2_swap(input, epoch_list, model_checkpoint_dict, filename):
 
     fig.savefig(filename, format='png', bbox_inches='tight')
 
+def get_flattened_gates_CLL_4D(model):
+    keys = [key for key in model.children_dict.keys()]
+    leaf_gate = model.children_dict[keys[1]][0]
+    flat_root = \
+        [
+        F.sigmoid(model.root.gate_low1_param),
+        F.sigmoid(model.root.gate_upp1_param),
+        F.sigmoid(model.root.gate_low2_param),
+        F.sigmoid(model.root.gate_upp2_param)
+        ]
+    flat_leaf = \
+        [
+        F.sigmoid(leaf_gate.gate_low1_param), 
+        F.sigmoid(leaf_gate.gate_upp1_param), 
+        F.sigmoid(leaf_gate.gate_low2_param), 
+        F.sigmoid(leaf_gate.gate_upp2_param) 
+        ] 
+    return [flat_root, flat_leaf]
+
+def plot_box(axes, x1, x2, y1, y2, color, label, dashed=False, lw=3):
+    dash = [3,1]
+    if dashed:
+        axes.plot([x1, x1], [y1, y2], c=color, label=label, dashes=dash, linewidth=lw)
+        axes.plot([x1, x2], [y1, y1], c=color, dashes=dash, linewidth=lw)
+        axes.plot([x2, x2], [y1, y2], c=color, dashes=dash, linewidth=lw)
+        axes.plot([x2, x1], [y2,y2], c=color, dashes=dash, linewidth=lw)
+    else:
+        axes.plot([x1, x1], [y1, y2], c=color, label=label, linewidth=lw)
+        axes.plot([x1, x2], [y1, y1], c=color, linewidth=lw)
+        axes.plot([x2, x2], [y1, y2], c=color, linewidth=lw)
+        axes.plot([x2, x1], [y2,y2], c=color, linewidth=lw)
+    return axes
+
+def plot_gate(axes, gate, color, label, dashed=False, lw=.5):
+    plot_box(axes, gate[0], gate[1], gate[2], gate[3], color, label, dashed=dashed, lw=lw)
+'''
+plot samples on user provided row by column grid
+'''
+def plot_gates_and_samples_2d(plotting_grid, samples, gate, save_path,Dafi_gate=None, cell_sz=.1):
+    fig, axes = plt.subplots(plotting_grid[0], plotting_grid[1], sharex=True, sharey=True, figsize=(plotting_grid[1] * 2, plotting_grid[0] * 2))
+    for row in range(plotting_grid[0]):
+        for col in range(plotting_grid[1]):
+            if row * plotting_grid[1] + col < len(samples):
+                cur_sample = samples[row * plotting_grid[1] + col]
+                plot_gate(axes[row][col],gate , 'r', '', dashed=True)
+                axes[row][col].scatter(cur_sample[:, 0], cur_sample[:, 1], s=cell_sz)
+                if Dafi_gate:
+                    plot_gate(axes[row][col], Dafi_gate, 'k', '')
+    
+    fig.tight_layout()
+    fig.savefig(save_path)
+
+'''
+function to make plots for root +- samples, and leaf +- samples
+'''
+def plot_samples_and_gates_cll_4d_dev(samples, labels , model,Dafi_flattened_gates, cell_sz=.1):
+    pos_samples = [sample for s,sample in enumerate(samples) if labels[s] == 1.]
+    neg_samples = [sample for s,sample in enumerate(samples) if labels[s] == 0.]
+    root_gate, leaf_gate = get_flattened_gates_CLL_4D(model) 
+    plotting_grid_pos = [3, 7]
+    plotting_grid_neg = [2, 7]
+
+    pos_samples_root = [pos_sample[:, [0, 1]] for pos_sample in pos_samples]
+    pos_samples_leaf_4d = [dh.filter_rectangle(pos_sample, 0, 1,
+                    F.sigmoid(model.root.gate_low1_param).detach().item(),
+                    F.sigmoid(model.root.gate_upp1_param).detach().item(),
+                    F.sigmoid(model.root.gate_low2_param).detach().item(),
+                    F.sigmoid(model.root.gate_upp2_param).detach().item()) \
+                    for pos_sample in pos_samples]
+
+    pos_samples_leaf = [pos_sample[:, [2, 3]] for pos_sample in pos_samples_leaf_4d]
+
+    neg_samples_root = [neg_sample[:, [0, 1]] for neg_sample in neg_samples]
+    neg_samples_leaf_4d = [dh.filter_rectangle(neg_sample, 0, 1,
+                    F.sigmoid(model.root.gate_low1_param).detach().item(),
+                    F.sigmoid(model.root.gate_upp1_param).detach().item(),
+                    F.sigmoid(model.root.gate_low2_param).detach().item(),
+                    F.sigmoid(model.root.gate_upp2_param).detach().item())\
+                    for neg_sample in neg_samples]
+
+    neg_samples_leaf = [neg_sample[:, [2, 3]] for neg_sample in neg_samples_leaf_4d]
+
+
+    plot_gates_and_samples_2d(plotting_grid_pos, pos_samples_root, root_gate, '../output/two_phase_g2=10_pos_root.png', Dafi_gate=Dafi_flattened_gates[0])
+    plot_gates_and_samples_2d(plotting_grid_neg, neg_samples_root, root_gate, '../output/two_phase_g2=10_neg_root.png', Dafi_gate=Dafi_flattened_gates[0])
+    plot_gates_and_samples_2d(plotting_grid_pos, pos_samples_leaf, leaf_gate, '../output/two_phase_g2=10_pos_leaf.png', Dafi_gate=Dafi_flattened_gates[1])
+    plot_gates_and_samples_2d(plotting_grid_neg, neg_samples_leaf, leaf_gate, '../output/two_phase_g2=10_neg_leaf.png', Dafi_gate=Dafi_flattened_gates[1])
+
+def get_dafi_gates(offset, scale, feature2id):
+    dafi_nested_list = \
+                    [[[u'CD5', 1638., 3891], [u'CD19', 2150., 3891.]],
+                    [
+                        [
+                            [[u'CD10', 0, 1228.], [u'CD79b', 0, 1843.]],
+                            []
+                        ]
+                    ]]
+    dafi_nested_list = dh.normalize_nested_tree(dafi_nested_list, offset, scale, feature2id)
+#    print(dafi_nested_list)
+    dafi_gates = [[0.4022, 0.955, 0.5535, 1.001], [0., 0.3, 0., 0.476]]
+    return dafi_gates
+
+
+def plot_pos_and_neg_gate_motion(models_per_iteration, model_dafi, data, hparams, labels):
+    data_pos = np.concatenate(
+        [x for idx, x in enumerate(data) if labels[idx] == 1]
+    )
+
+    shuffled_idxs_pos = np.random.permutation(
+            int(data_pos.shape[0])
+    )
+    data_pos_subsampled = data_pos[shuffled_idxs_pos[0:10000]] 
+
+    data_neg = np.concatenate(
+        [x for idx, x in enumerate(data) if labels[idx] == 0]
+    )
+    shuffled_idxs_neg = np.random.permutation(
+            int(data_neg.shape[0])
+    )
+    data_neg_subsampled = data_neg[shuffled_idxs_neg[0:10000]]
+
+    plot_gate_motion(
+            models_per_iteration, model_dafi, data_pos_subsampled, 
+            hparams, savename='gate_motion_pos'
+    )
+    plot_gate_motion(models_per_iteration, model_dafi, data_neg_subsampled, 
+            hparams, savename='gate_motion_neg'
+    )
+
+def parse_hparams(path_to_hparams):
+    hparams = ParameterParser(path_to_hparams).parse_params()
+
+
+
+   # hparams = default_hparams
+   # with open(path_to_hparams, "r") as f_in:
+   #     yaml_params = yaml.safe_load(f_in)
+   # hparams.update(yaml_params)
+   # hparams['init_method'] = "dafi_init" if hparams['dafi_init'] else "random_init"
+   # if hparams['train_alternate']:
+   #     hparams['n_epoch_dafi'] = hparams['n_epoch'] // hparams['n_mini_batch_update_gates'] * (
+   #             hparams['n_mini_batch_update_gates'] - 1)
+   # else:
+   #     hparams['n_epoch_dafi'] = hparams['n_epoch']
+
+   # print(hparams)
+    return hparams
+
+
+# Currently only works for a chain graph
+def load_output(path_to_hparams):
+        output = {}
+        hparams = parse_hparams(path_to_hparams)
+        output['hparams'] = hparams
+        exp_name = hparams['experiment_name']
+        model_checkpoint_path = '../output/%s/model_checkpoints.pkl'\
+            %hparams['experiment_name']
+
+        with open(model_checkpoint_path, 'rb') as f:
+            model_checkpoint_dict = pickle.load(f)
+        # note that the initial cuts stored in this input
+        # object are not the cuts that this function uses
+        # this input object is only used here because the dafi gates
+        # are saved inside it
+        output['cll_1p_full_input'] = Cll8d1pInput(hparams)
+         
+        output['dafi_tree'] = ModelTree(output['cll_1p_full_input'].reference_tree,
+                              logistic_k=hparams['logistic_k_dafi'],
+                              negative_box_penalty=hparams['negative_box_penalty'],
+                              positive_box_penalty=hparams['positive_box_penalty'],
+                              corner_penalty=hparams['corner_penalty'],
+                              gate_size_penalty=hparams['gate_size_penalty'],
+                              init_tree=None,
+                              loss_type=hparams['loss_type'],
+                              gate_size_default=hparams['gate_size_default'])
+
+
+        output['models_per_iteration'] = [
+                model_checkpoint_dict[iteration] 
+                for iteration in 
+                hparams['seven_epochs_for_gate_motion_plot']
+        ]
+        # Checkpoint dictionary is messed up when saving
+        # since str(id(node)) for each node is changed 
+        # (pickling is out of place and makes a new object with a
+        # new id. This only works with a chain graph to make the ids match
+        # the saved object ids
+        fixed_models_per_iteration = []
+        for model in output['models_per_iteration']:
+            cur_node = model.root
+            fixed_children_dict = {}
+            num_nodes = len(model.children_dict.keys())
+            for key, item in model.children_dict.items():
+                fixed_children_dict[str(id(cur_node))] = nn.ModuleList(item)
+                if not len(model.children_dict[key]) == 0:
+                    cur_node = model.children_dict[key][0]
+            model.children_dict = nn.ModuleDict(fixed_children_dict)
+
+
+        print('root id is: ', str(id(output['models_per_iteration'][0].root)))
+        keys = [key for key in output['models_per_iteration'][0].children_dict.keys()]
+        print('keys are: ', output['models_per_iteration'][0].children_dict.keys())
+        print('id of root in new dict is: ', str(id(output['models_per_iteration'][0].children_dict[keys[0]])))
+        print('init model is: ', output['models_per_iteration'][0])
+        #call split on input here if theres a bug
+        return output
+
+def make_single_iter_pos_and_neg_gates_plot(output, iteration, marker_size=None, device_data=1, plot_train=True):
+    if output['models_per_iteration']:
+        model = output['models_per_iteration'][iteration]
+    else:
+        model = output['model']
+    hparams = output['hparams']
+    cll_1p_full_input = output['cll_1p_full_input']
+    full_data = cll_1p_full_input.x_train if plot_train else cll_1p_full_input.x_eval
+    full_labels = cll_1p_full_input.y_train if plot_train else cll_1p_full_input.y_eval
+    dafi_tree = output['dafi_tree']
+
+    if torch.cuda.is_available():
+        model.to(device=device_data)
+        dafi_tree.to(device=device_data)
+    data_x_tr_pos = [
+            x for idx, x in enumerate(full_data)
+            if full_labels[idx] == 1.
+    ]
+    data_x_tr_neg = [
+            x for idx, x in enumerate(full_data)
+            if full_labels[idx] == 0.
+    ]
+
+    data_for_overlaps = [
+                            x.cpu().detach().numpy()
+                            for x in full_data
+                        ]
+                        
+
+    data_pos_for_plot = np.concatenate(
+                            [
+                                x.cpu().detach().numpy()
+                                for x in data_x_tr_pos
+                            ]
+                        )
+    data_neg_for_plot = np.concatenate(
+                            [
+                                x.cpu().detach().numpy()
+                                for x in data_x_tr_neg
+                            ]
+                        )
+
+
+    shuffled_idxs_pos = np.random.permutation(
+            int(data_pos_for_plot.shape[0])
+    )
+    data_pos_for_plot = data_pos_for_plot[shuffled_idxs_pos[0:10000]] 
+
+
+    shuffled_idxs_neg = np.random.permutation(
+            int(data_neg_for_plot.shape[0])
+    )
+    data_neg_for_plot = data_neg_for_plot[shuffled_idxs_neg[0:10000]]
+
+
+    gate_names = ['CD45-SSC-H', 'SSC-A, FSC-A', 'CD19-CD5', 'CD79b-CD10']
+    fig, axes = plt.subplots(5, 2, figsize=(4, 8), sharex=True, sharey=True)
+    if output['hparams']['dictionary_is_broken']:
+        model.fix_dictionary_4chain()
+        dafi_tree.fix_dictionary_4chain()
+    model_output_pos = model(data_x_tr_pos, device=device_data)
+    features_mean_pos = np.mean(model_output_pos['leaf_probs'].detach().cpu().numpy())
+    model_output_neg = model(data_x_tr_neg, device=device_data)
+    features_mean_neg = np.mean(model_output_neg['leaf_probs'].detach().cpu().numpy())
+    model_output = model(full_data, full_labels, device=device_data)
+    
+#    model_output_pos = model.forward_4chain(data_x_tr_pos, device=device_data)
+#    features_mean_pos = np.mean(model_output_pos['leaf_probs'].detach().cpu().numpy())
+#    model_output_neg = model.forward_4chain(data_x_tr_neg, device=device_data)
+#    features_mean_neg = np.mean(model_output_neg['leaf_probs'].detach().cpu().numpy())
+#    model_output = model.forward_4chain(full_data, full_labels, device=device_data)
+    y_true = full_labels
+    y_pred = model_output['y_pred'].detach().cpu().numpy()
+#    print('y_pred', np.round(y_pred))
+#    print('y_true', y_true)
+    acc = (sum(np.round(np.array(y_pred)) == y_true.cpu().numpy()) * 1.0 / y_true.shape[0])
+    cell_overlaps = CellOverlaps(model, dafi_tree, data_for_overlaps, is_4chain=True) #cll_1p_full_input.y_train.detach().cpu().numpy())
+    overlaps = cell_overlaps.compute_overlap_diagnostics()
+    in_both = overlaps[:, 0]
+    
+    avg_percent_in_both_model = 0.
+    for overlap in overlaps:
+        contr = 0.
+        # they are both zero so the contribution should be 1
+        # ie perfect overlap
+        if overlap[3] == 0. and (overlap[3] == overlap[4]):
+            contr = 1.
+        # one is zero but the other isn.t
+        elif overlap[3] == 0. and (not(overlap[3] == overlap[4])):
+            contr = 0.
+        else:
+            contr = overlap[0]/overlap[3]
+        avg_percent_in_both_model += contr
+    avg_percent_in_both_model = avg_percent_in_both_model/overlaps.shape[0]
+
+
+    avg_percent_in_both_DAFI = 0.
+    for overlap in overlaps:
+        contr = 0.
+        # they are both zero so the contribution should be 1
+        # ie perfect overlap
+        if overlap[4] == 0. and (overlap[3] == overlap[4]):
+            contr = 1.
+        # one is zero but the other isn.t
+        elif overlap[4] == 0. and (not(overlap[3] == overlap[4])):
+            contr = 0.
+        else:
+            contr = overlap[0]/overlap[4]
+        avg_percent_in_both_DAFI += contr
+    avg_percent_in_both_DAFI = avg_percent_in_both_DAFI/overlaps.shape[0]
+    
+    diagnostics = [
+        '%.3f' %model_output['log_loss'],
+        '%.3f' %acc,
+        '%.3f' %features_mean_pos,
+        '%.3f' %features_mean_neg,
+        '%.3f' %avg_percent_in_both_model,
+        '%.3f' %avg_percent_in_both_DAFI
+
+    ]
+
+    diagnostics_labels = [
+        'Log-Loss',
+        'Accuracy',
+        'Model Avg Pos Feature',
+        'Model Avg Neg Feature',
+        '% Model Leaf Cells in Both',
+        '% Dafi Leaf Cells in Both'
+    ]
+
+    axes[4][0].table(
+            cellText=np.array(diagnostics)[:, np.newaxis],
+        rowLabels=diagnostics_labels,
+        bbox=np.array([1.275, 0., 1., 1.])
+    )
+    axes[4][0].set_axis_off()
+    axes[4][1].set_axis_off()
+    plotter_pos = DataAndGatesPlotter(model, data_pos_for_plot)
+    plotter_neg = DataAndGatesPlotter(model, data_neg_for_plot)
+    plotter_pos.plot_on_axes(axes[:-1, 0], hparams)
+    plotter_neg.plot_on_axes(axes[:-1, 1], hparams)
+    for i in range(axes.shape[0] - 1):
+        axes[i][0].set_ylabel(gate_names[i])
+    axes[0][0].set_title('Positive Samples')
+    axes[0][1].set_title('Negative Samples')
+    #plt.subplots_adjust(bottom=.25, top=.95)
+
+
+    plt.tight_layout()
+
+
+def run_model_single_iter_pos_and_neg_gates_p1(hparams, path_to_saved_model,  device_data=1):
+    output = {}
+    output['hparams'] = hparams
+    input = CllBothPanelsInput(hparams)
+    output['cll_1p_full_input'] = input
+    output['dafi_tree'] = ModelTreeBoth(input.reference_tree,
+                          logistic_k=hparams['logistic_k_dafi'],
+                          negative_box_penalty=hparams['negative_box_penalty'],
+                          positive_box_penalty=hparams['positive_box_penalty'],
+                          corner_penalty=hparams['corner_penalty'],
+                          gate_size_penalty=hparams['gate_size_penalty'],
+                          init_tree=None,
+                          loss_type=hparams['loss_type'],
+                          gate_size_default=hparams['gate_size_default'])
+    with open(path_to_saved_model, 'rb') as f:
+        output['model'] = pickle.load(f)
+    output['models_per_iteration'] = None
+    make_single_iter_pos_and_neg_gates_plot(output, -10000, device_data=device_data)
+    plt.savefig('../output/%s/pos_and_neg_gates_converged.png' %hparams['experiment_name'])
+def run_model_single_iter_pos_and_neg_gates(hparams, path_to_saved_model,  device_data=1):
+    output = {}
+    output['hparams'] = hparams
+    input = Cll8d1pInput(hparams)
+    output['cll_1p_full_input'] = input
+    output['dafi_tree'] = ModelTree(input.reference_tree,
+                          logistic_k=hparams['logistic_k_dafi'],
+                          negative_box_penalty=hparams['negative_box_penalty'],
+                          positive_box_penalty=hparams['positive_box_penalty'],
+                          corner_penalty=hparams['corner_penalty'],
+                          gate_size_penalty=hparams['gate_size_penalty'],
+                          init_tree=None,
+                          loss_type=hparams['loss_type'],
+                          gate_size_default=hparams['gate_size_default'])
+    with open(path_to_saved_model, 'rb') as f:
+        output['model'] = pickle.load(f)
+    output['models_per_iteration'] = None
+    make_single_iter_pos_and_neg_gates_plot(output, -10000, device_data=device_data)
+    plt.savefig('../output/%s/pos_and_neg_gates_converged.png' %hparams['experiment_name'])
+
+
+def run_dafi_single_iter_pos_and_neg_gates(hparams, device_data=1):
+    output = {}
+    output['hparams'] = hparams
+    input = Cll8d1pInput(hparams)
+    output['cll_1p_full_input'] = input
+    output['dafi_tree'] = ModelTree(input.reference_tree,
+                          logistic_k=hparams['logistic_k_dafi'],
+                          negative_box_penalty=hparams['negative_box_penalty'],
+                          positive_box_penalty=hparams['positive_box_penalty'],
+                          corner_penalty=hparams['corner_penalty'],
+                          gate_size_penalty=hparams['gate_size_penalty'],
+                          init_tree=None,
+                          loss_type=hparams['loss_type'],
+                          gate_size_default=hparams['gate_size_default'])
+    make_single_iter_pos_and_neg_gates_plot_dafi(output, 1e20, device_data=device_data, color='k')
+    savepath = '../output/%s/dafi_pos_and_neg_gates.png'
+    print('saving figure at %s' %(savepath % hparams['experiment_name']))
+    plt.savefig(savepath  %hparams['experiment_name'])
+
+def make_single_iter_pos_and_neg_gates_plot_dafi(output, iteration, marker_size=None, device_data=1, plot_train=True, color='k'):
+    model = output['dafi_tree']
+    if torch.cuda.is_available():
+        model.cuda(device_data)
+    hparams = output['hparams']
+    cll_1p_full_input = output['cll_1p_full_input']
+    full_data = cll_1p_full_input.x_train if plot_train else cll_1p_full_input.x_eval
+    full_labels = cll_1p_full_input.y_train if plot_train else cll_1p_full_input.y_eval
+    dafi_tree = output['dafi_tree']
+
+    if torch.cuda.is_available():
+        model.to(device=device_data)
+        dafi_tree.to(device=device_data)
+    data_x_tr_pos = [
+            x for idx, x in enumerate(full_data)
+            if full_labels[idx] == 1.
+    ]
+    data_x_tr_neg = [
+            x for idx, x in enumerate(full_data)
+            if full_labels[idx] == 0.
+    ]
+
+    data_for_overlaps = [
+                            x.cpu().detach().numpy()
+                            for x in full_data
+                        ]
+                        
+
+    data_pos_for_plot = np.concatenate(
+                            [
+                                x.cpu().detach().numpy()
+                                for x in data_x_tr_pos
+                            ]
+                        )
+    data_neg_for_plot = np.concatenate(
+                            [
+                                x.cpu().detach().numpy()
+                                for x in data_x_tr_neg
+                            ]
+                        )
+
+
+    shuffled_idxs_pos = np.random.permutation(
+            int(data_pos_for_plot.shape[0])
+    )
+    data_pos_for_plot = data_pos_for_plot[shuffled_idxs_pos[0:10000]] 
+
+
+    shuffled_idxs_neg = np.random.permutation(
+            int(data_neg_for_plot.shape[0])
+    )
+    data_neg_for_plot = data_neg_for_plot[shuffled_idxs_neg[0:10000]]
+
+
+    gate_names = ['CD45-SSC-H', 'SSC-A, FSC-A', 'CD19-CD5', 'CD79b-CD10']
+    fig, axes = plt.subplots(5, 2, figsize=(4, 8), sharex=True, sharey=True)
+
+    #may have to use forwards four chain here
+    model_output_pos = model.forward_4chain(data_x_tr_pos, device=device_data)
+    features_mean_pos = np.mean(model_output_pos['leaf_probs'].detach().cpu().numpy())
+    model_output_neg = model.forward_4chain(data_x_tr_neg, device=device_data)
+    features_mean_neg = np.mean(model_output_neg['leaf_probs'].detach().cpu().numpy())
+    
+    run_train_only_logistic_regression(
+            model, full_data,
+            full_labels, hparams['learning_rate_classifier'],
+            verbose=False
+    )
+    model_output = model(full_data, full_labels)
+
+    y_true = full_labels
+    y_pred = model_output['y_pred'].detach().cpu().numpy()
+#    print('y_pred', np.round(y_pred))
+#    print('y_true', y_true)
+    acc = (sum(np.round(np.array(y_pred)) == y_true.cpu().numpy()) * 1.0 / y_true.shape[0])
+    cell_overlaps = CellOverlaps(model, dafi_tree, data_for_overlaps) #cll_1p_full_input.y_train.detach().cpu().numpy())
+    overlaps = cell_overlaps.compute_overlap_diagnostics()
+    in_both = overlaps[:, 0]
+
+    avg_percent_in_both_model = 0.
+    for overlap in overlaps:
+        contr = 0.
+        # they are both zero so the contribution should be 1
+        # ie perfect overlap
+        if overlap[3] == 0. and (overlap[3] == overlap[4]):
+            contr = 1.
+        # one is zero but the other isn.t
+        elif overlap[3] == 0. and (not(overlap[3] == overlap[4])):
+            contr = 0.
+        else:
+            contr = overlap[0]/overlap[3]
+        avg_percent_in_both_model += contr
+    avg_percent_in_both_model = avg_percent_in_both_model/overlaps.shape[0]
+
+
+    avg_percent_in_both_DAFI = 0.
+    for overlap in overlaps:
+        contr = 0.
+        # they are both zero so the contribution should be 1
+        # ie perfect overlap
+        if overlap[4] == 0. and (overlap[3] == overlap[4]):
+            contr = 1.
+        # one is zero but the other isn.t
+        elif overlap[4] == 0. and (not(overlap[3] == overlap[4])):
+            contr = 0.
+        else:
+            contr = overlap[0]/overlap[4]
+        avg_percent_in_both_DAFI += contr
+    avg_percent_in_both_DAFI = avg_percent_in_both_DAFI/overlaps.shape[0]
+    
+    
+    #in_model_but_not_DAFI_percent = overlaps[:, 1]/
+    #in_DAFI_but_not_model_percent = overlaps[:, 2]
+    diagnostics = [
+        '%.3f' %model_output['log_loss'],
+        '%.3f' %acc,
+        '%.3f' %features_mean_pos,
+        '%.3f' %features_mean_neg,
+        '%.3f' %avg_percent_in_both_model,
+        '%.3f' %avg_percent_in_both_DAFI
+
+    ]
+
+    diagnostics_labels = [
+        'Log-Loss',
+        'Accuracy',
+        'Model Avg Pos Feature',
+        'Model Avg Neg Feature',
+        '% Model Leaf Cells in Both',
+        '% Dafi Leaf Cells in Both'
+    ]
+
+    axes[4][0].table(
+            cellText=np.array(diagnostics)[:, np.newaxis],
+        rowLabels=diagnostics_labels,
+        bbox=np.array([1.275, 0., 1., 1.])
+    )
+    axes[4][0].set_axis_off()
+    axes[4][1].set_axis_off()
+    plotter_pos = DataAndGatesPlotter(model, data_pos_for_plot, color='black')
+    plotter_neg = DataAndGatesPlotter(model, data_neg_for_plot, color='black')
+    plotter_pos.plot_on_axes(axes[:-1, 0], hparams)
+    plotter_neg.plot_on_axes(axes[:-1, 1], hparams)
+    for i in range(axes.shape[0] - 1):
+        axes[i][0].set_ylabel(gate_names[i])
+    axes[0][0].set_title('Positive Samples')
+    axes[0][1].set_title('Negative Samples')
+    #plt.subplots_adjust(bottom=.25, top=.95)
+
+
+    plt.tight_layout()
+
+
+
+def run_single_iter_pos_and_neg_gates_plot(path_to_hparams):
+    output = load_output(path_to_hparams)
+    hparams = output['hparams']
+    marker_size = .00005
+    # plot gates for pos and neg on same plot for iterations 0, 
+    # end of log loss training, and the last epoch
+    make_single_iter_pos_and_neg_gates_plot(output, 0, marker_size=marker_size)
+    plt.savefig('../output/%s/pos_and_neg_gates_iter_0.png' %hparams['experiment_name'])
+    plt.clf()
+
+    log_loss_last_epoch = hparams['two_phase_training']['num_only_log_loss_epochs']
+    log_loss_last_epoch_idx = hparams['seven_epochs_for_gate_motion_plot'].index(log_loss_last_epoch)
+    make_single_iter_pos_and_neg_gates_plot(output, log_loss_last_epoch_idx, marker_size=marker_size)
+    plt.savefig('../output/%s/pos_and_neg_gates_iter_%d.png' %(hparams['experiment_name'], log_loss_last_epoch))
+    plt.clf()
+
+    make_single_iter_pos_and_neg_gates_plot(output, len(output['models_per_iteration']) - 1 , marker_size=marker_size)
+    plt.savefig('../output/%s/pos_and_neg_gates_iter_%d.png' %(hparams['experiment_name'], hparams['seven_epochs_for_gate_motion_plot'][len(output['models_per_iteration']) - 1]))
+    plt.clf()
+
+
+
+def run_leaf_gate_plots(path_to_hparams):
+    output = load_output(path_to_hparams)
+    hparams = output['hparams']
+    cll_1p_full_input = output['cll_1p_full_input']
+    detached_data_x_tr_pos = np.concatenate(
+                            [
+                                x.cpu().detach().numpy() 
+                                for idx, x in enumerate(cll_1p_full_input.x_train)
+                                if cll_1p_full_input.y_train[idx] == 1.
+                            ]                        
+                        )
+
+    detached_data_x_tr_neg = np.concatenate(
+                            [
+                                x.cpu().detach().numpy() 
+                                for idx, x in enumerate(cll_1p_full_input.x_train)
+                                if cll_1p_full_input.y_train[idx] == 0.
+                            ]                        
+                        )
+    make_leaf_gate_plots(
+        output['models_per_iteration'],
+        output['dafi_tree'],
+        output['hparams'],
+        detached_data_x_tr_pos,
+        cll_1p_full_input.y_train
+    )
+    plt.savefig('../output/%s/leaf_plot_pos.png' %hparams['experiment_name'])
+    plt.clf()
+
+    make_leaf_gate_plots(
+        output['models_per_iteration'],
+        output['dafi_tree'],
+        output['hparams'],
+        detached_data_x_tr_neg,
+        cll_1p_full_input.y_train
+    )
+    plt.savefig('../output/%s/leaf_plot_neg.png' %hparams['experiment_name'])
+
+
+#takes in a pre-parsed hparams for now
+# currently only works for full batch descent
+def run_gate_motion_from_saved_results(path_to_hparams):
+        #may need torch set device here
+        output = load_output(path_to_hparams)
+        cll_1p_full_input = output['cll_1p_full_input']
+        models_per_iteration = output['models_per_iteration']
+        dafi_tree = output['dafi_tree']
+        hparams = output['hparams']
+
+        #call split on input here if theres a bug
+        detached_data_x_tr = [x.cpu().detach().numpy() for x in cll_1p_full_input.x_train]
+        plot_pos_and_neg_gate_motion(
+                models_per_iteration, 
+                dafi_tree,
+                detached_data_x_tr,
+                hparams,
+                cll_1p_full_input.y_train
+        )
+
+def make_axes_pretty(axes, fig, gate_names, hparams):
+    if hparams['two_phase_training']['turn_on']:
+        last_noreg_iter_idx = hparams['seven_epochs_for_gate_motion_plot'].index(
+            hparams['two_phase_training']['num_only_log_loss_epochs']        
+        )
+
+        axes[0][last_noreg_iter_idx + 1].plot(
+                [.57, 0.57], [.1, .9], color='black', lw=2,
+                transform=fig.transFigure, clip_on=False
+        ) 
+
+
+    for i in range(4):
+        axes[i][0].set_ylabel(gate_names[i])
+    for i in range(axes.shape[0]):
+        for j in range(axes.shape[1]):
+        #    # dont show y ticks if not in first col
+        #    if (j > 0):
+        #        axes[i][j].get_yaxis().set_ticks([])
+
+        #    # dont show x ticks if not in the last row
+        #    if not (i == axes.shape[0] - 1):
+        #        axes[i][j].get_xaxis().set_ticks([])
+            
+            # add iterations to the first row
+            if i == 0:
+                axes[i][j].set_title(
+                        'Iteration: ' + str(hparams['seven_epochs_for_gate_motion_plot'][j])
+                )
+        
+    fig.tight_layout()
+
+# Refactored version of gate motion code- currently hardcoded for 8-d example
+def plot_gate_motion(models_per_iteration, model_dafi, data, hparams, savename='gate_motion.png'):
+#    plot_params = DEFAULT_PLOT_PARAMS.update(plot_params)
+    num_gates = len(model_dafi.children_dict)
+    num_iterations = len(models_per_iteration)
+    fig, axes = plt.subplots(num_gates, num_iterations,
+                    figsize=hparams['plot_params']['figsize'],
+                    sharex=True, sharey=True
+                    )
+
+    gate_names = ['CD45-SSC-H', 'SSC-A, FSC-A', 'CD19-CD5', 'CD79b-CD10']
+
+    for iteration, model in enumerate(models_per_iteration):
+        plot_data_and_gates(axes[:, iteration], model, data, hparams)
+        plot_just_DAFI_gates(axes[:, iteration], model_dafi, data, hparams)
+       # plot_data_and_gates(axes[:, iteration], model_dafi, data, hparams)
+
+    make_axes_pretty(axes, fig, gate_names, hparams)
+
+    fig.savefig('../output/%s/%s.png' %(hparams['experiment_name'], savename))
+
+
+def make_leaf_gate_plots(models_per_iteration, dafi_tree, hparams, data, labels):
+    fig, axes = plt.subplots(2, 3, sharex=True, sharey=True)
+    print(axes.shape)
+
+    # changing one axis xlim and ylim will change the rest
+    # since sharex/y is used
+    axes[0][0].set_xlim(0., 1.)
+    axes[0][0].set_ylim(0., 1.)
+
+    # find end of log loss to plot 
+    last_noreg_iter_idx = hparams['seven_epochs_for_gate_motion_plot'].index(
+        hparams['two_phase_training']['num_only_log_loss_epochs']        
+    )
+
+    # plot top row for model gates
+    iters_idx_to_plot = [0, last_noreg_iter_idx, -1]
+    iterations = [
+            0, 
+            hparams['two_phase_training']['num_only_log_loss_epochs'],
+            hparams['n_epoch']
+    ]
+    for j,iter_idx_to_plot in enumerate(iters_idx_to_plot):
+        model = models_per_iteration[iter_idx_to_plot]
+        axis = axes[0][j]
+        axis.set_title('Iteration %d' %iterations[j])
+        plot_just_leaf(axis, model, data, hparams)
+    axes[0][0].set_ylabel('Leaf (CD79b-CD10)')
+    # plot dafi gates and filtered data
+    axes[1][1].set_title('Dafi Leaf')
+    plot_just_leaf(axes[1][1], dafi_tree, data, hparams)
+    # dafi gates don't change during training
+    fig.delaxes(axes[1][0])
+    fig.delaxes(axes[1][2])
+    fig.tight_layout()
+    plt.savefig('../output/%s/leaf_plot.png' %(hparams['experiment_name']))
+
+
+def run_both_panels_pos_and_neg_gates(model, hparams, num_cells_to_plot=10000, savename='pos_and_neg_gates_both.png'):
+    input = CllBothPanelsInput(hparams)
+    pos_data = [[x.detach().cpu().numpy() for x in x_both] for i, x_both in enumerate(input.x_list) if input.y_list[i] == 1]
+    pos_data = [np.concatenate([d[0] for d in pos_data]), np.concatenate([d[1] for d in pos_data]) ]
+    pos_data = [d[np.random.permutation(d.shape[0])][0:num_cells_to_plot] for d in pos_data]
+
+    neg_data = [[x.detach().cpu().numpy() for x in x_both] for i, x_both in enumerate(input.x_list) if input.y_list[i] == 0]
+    neg_data = [np.concatenate([d[0] for d in neg_data]), np.concatenate([d[1] for d in neg_data]) ]
+    neg_data = [d[np.random.permutation(d.shape[0])][0:num_cells_to_plot] for d in neg_data]
+    fig_p1, fig_p2 = plot_both_panels_pos_and_neg_gates(model, pos_data, neg_data, hparams)
+    fig_p1.savefig('../output/%s/p1_%s' %(hparams['experiment_name'], savename))
+    fig_p2.savefig('../output/%s/p2_%s' %(hparams['experiment_name'], savename))
+
+def plot_both_panels_pos_and_neg_gates(model, pos_data, neg_data, hparams):
+    plotter_pos = DataAndGatesPlotterBoth(model, pos_data)
+    plotter_neg = DataAndGatesPlotterBoth(model, neg_data)
+    fig_p1, axes_p1 = plt.subplots(4, 2, figsize=(4, 8), sharex=True, sharey=True)
+
+    fig_p2, axes_p2 = plt.subplots(3, 2, figsize=(4, 6), sharex=True, sharey=True)
+
+    pos_axes = np.concatenate([axes_p1[:, 0], axes_p2[:, 0]], axis=0)
+    plotter_pos.plot_on_axes(pos_axes, hparams)
+
+    neg_axes = np.concatenate([axes_p1[:, 1], axes_p2[:, 1]], axis=0)
+    plotter_neg.plot_on_axes(neg_axes, hparams)
+    return fig_p1, fig_p2
+    
+
+
+
+#note: wont work for general tree graph
+def plot_just_leaf(axis, model, data, hparams):
+    modelPlotter = DataAndGatesPlotter(model, data)
+    modelPlotter.plot_node(axis, len(modelPlotter.gates) - 1, hparams)
+
+def plot_just_DAFI_gates(axes, model, data, hparams):
+    modelPlotter = DataAndGatesPlotter(model, data)
+    modelPlotter.plot_only_DAFI_gates_on_axes(axes, hparams)
+
+# Refactored version of plotting code
+def plot_data_and_gates(axes, model, data, hparams):
+    modelPlotter = DataAndGatesPlotter(model, data)
+    modelPlotter.plot_on_axes(axes, hparams) 
+
+
+
+def plot_accs_and_losses(tracker_train_path, tracker_eval_path, num_iterations=200, savefolder='./output'):
+    with open(tracker_train_path, 'rb') as f:
+        tracker_train = pickle.load(f)
+
+    with open(tracker_eval_path, 'rb') as f:
+        tracker_eval = pickle.load(f)
+
+    iterations = np.arange(stop=num_iterations + 1, start=0, step=10)
+
+    plt.plot(iterations, tracker_train.acc, color='tab:orange', label='Train')
+    plt.plot(iterations, tracker_eval.acc, color='tab:blue', label='Test')
+    plt.xlabel('Iterations')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.savefig(os.path.join(savefolder, 'eval_and_tr_accs_final_model.png')  , bbox_inches='tight')
+
+    plt.clf()
+    losses_train = [loss.numpy() for loss in tracker_train.log_loss]
+    losses_eval = [loss.numpy() for loss in tracker_eval.log_loss]
+    plt.plot(iterations, losses_train, color='tab:orange', label='Train')
+    plt.plot(iterations, losses_eval, color='tab:blue', label='Test')
+    plt.xlabel('Iterations')
+    plt.ylabel(r'$l(\theta, \alpha)$')
+    plt.legend()
+    plt.savefig(os.path.join(savefolder, 'eval_and_tr_losses_final_model.png')  , bbox_inches='tight')
+
+
+ 
+def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_thresh=1e-10, verbose=True, log_features=None):
+    start = time.time() 
+    classifier_params = [model.linear.weight, model.linear.bias]
+    optimizer_classifier = torch.optim.Adam(classifier_params, lr=adam_lr)
+    if log_features is None:
+        output = model(x_tensor_list, y, detach_logistic_params=True)
+        log_features = output['leaf_logp']
+    BCEWithLogits = nn.BCEWithLogitsLoss()
+    #these are called log_probs in the forwards function, but
+    #calling them log_features is more consistent with our
+    #previous usages in the paper and code
+    
+    prev_loss = -10 #making sure the loop starts
+    delta = 50
+    iters = 0
+    while delta > conv_thresh:
+        #features are fixed here, the only thing we need is the change in log loss from logistic params
+        #forward pass through entire model is uneccessary!
+        log_loss = BCEWithLogits(model.linear(log_features).squeeze(1), y)
+        optimizer_classifier.zero_grad()
+        log_loss.backward()
+        optimizer_classifier.step()
+        delta = torch.abs(log_loss - prev_loss)
+        prev_loss = log_loss
+        iters += 1
+        if verbose:
+            print(log_loss.item())
+            if iters%100 == 0:
+                print('%.6f ' %(delta), end='')
+                if iters%500 == 0:
+                    print('\n')
+            print('\n')
+            print('time taken %d, with loss %.2f' %(time.time() - start, log_loss.detach().item()))
+    return model
+if __name__ == '__main__':
+    savefolder = '../output/CV_neg=0.001_diff=0.001_FINAL_OOS_seed0/'
+    tracker_train_path = savefolder + 'tracker_train_m.pkl'
+    tracker_eval_path = savefolder + 'tracker_eval_m.pkl'
+
+    plot_accs_and_losses(tracker_train_path, tracker_eval_path, savefolder=savefolder)
+    #with open('../../data/cll/x_dev_4d_1p.pkl', 'rb') as f:
+    #    x_dev_list = pickle.load(f)
+
+    #with open('../../data/cll/y_dev_4d_1p.pkl', 'rb') as f:
+    #    labels= pickle.load(f)
+
+
+    #features = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8']
+    #feature2id = dict((features[i], i) for i in range(len(features)))
+    #x_dev_list, offset, scale = dh.normalize_x_list(x_dev_list)
+
+    #get_dafi_gates(offset, scale, feature2id)
+    #with open(model_path, 'rb') as f:
+    #    model = pickle.load(f)
+
+    #DAFI_GATES = get_dafi_gates(offset, scale, feature2id)
+
+    #plot_samples_and_gates_cll_4d_dev(x_dev_list, labels, model, DAFI_GATES, cell_sz=cell_sz)

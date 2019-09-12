@@ -1,2 +1,4 @@
 experiment_name: 'cll_4d_2p_test'
-n_epoch: 500
+#n_epoch: 10
+test_size: .90
+

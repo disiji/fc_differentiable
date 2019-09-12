@@ -1,0 +1,67 @@
+experiment_name: 'Synth_testing'
+n_epoch: 100
+n_run: 1
+n_epoch_eval: 10 
+test_size: 0.
+augment_training_with_dev_data: False
+use_out_of_sample_eval_data: True
+out_of_sample_eval_data: '../data/synth/synth_te_data.pkl'
+out_of_sample_eval_labels: '../data/synth/synth_te_labels.pkl'
+
+
+
+filter_uncertain_samples: False
+data_filtering_thresh: 0.25
+
+device: 1
+gate_size_default: [.5, .5]
+#100 for .25 10 otherwise
+gate_size_penalty: 0.0
+regularization_penalty: 0.
+negative_box_penalty: 0.00 #0.001 # 0.001 #.05
+neg_proportion_default: 0.0001
+init_reg_penalty: 0.
+feature_diff_penalty: 0.01 #.001 #0.001 #.05
+#neg_proportion_default: 0.0001
+corner_penalty: 0.0
+node_type: 'square'
+
+learning_rate_gates: .1 
+learning_rate_classifier: 0.05
+
+
+dictionary_is_broken: True
+init_type: 'heuristic_init'
+heuristic_init:
+        num_gridcells_per_axis: 4
+        use_greedy_filtering: False
+        consider_all_gates: False
+
+corner_init_deterministic_size: .5
+output:
+    type: 'CV_Full'
+data:
+    features_path: '../data/synth/synth_tr_data.pkl'
+    labels_path: '../data/synth/synth_tr_labels.pkl'
+
+seven_epochs_for_gate_motion_plot: [0, 25, 50, 75, 100, 150, 200]
+#seven_epochs_for_gate_motion_plot: [0, 1,2,3,4,5,10]
+run_logistic_to_convergence: True
+
+
+
+
+plot_params:
+    figsize: [21, 12]
+    marker_size: .1
+    plot_kde_density: True
+
+
+
+
+
+two_phase_training:
+    turn_on: False
+    num_only_log_loss_epochs: 0 #200
+    num_random_inits_for_log_loss_only: 1 #30
+    min_gate_size: .1

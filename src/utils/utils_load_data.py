@@ -1,5 +1,5 @@
 from __future__ import division
-
+import matplotlib.pyplot as plt
 import os
 import pickle
 
@@ -72,7 +72,7 @@ def filter_slope(data, dim1, dim2, x1, x2, y1, y2):
     return data[idx]
 
 
-def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2):
+def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2, return_idx=False):
     """
     return subset of datapoints in data that fall into the rectangle formed by (x1, y1),(x2, y2),(x1, y2) and (x2, y1)
     :param data: np.array (n_datapoints, n_features)
@@ -91,6 +91,11 @@ def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2):
     if x1 > x2 or y1 > y2:
         raise ValueError("x2 should be greater than x1, y2 should be greater than y1.")
     idx = (data[:, dim1] > x1) & (data[:, dim1] < x2) & (data[:, dim2] > y1) & (data[:, dim2] < y2)
+    #idx = (data[:, dim1] >= x1) & (data[:, dim1] <= x2) & (data[:, dim2] >= y1) & (data[:, dim2] <= y2)
+
+    if return_idx:
+        return idx
+
     return data[idx]
 
 
@@ -232,7 +237,7 @@ def normalize_x_list(x_list, offset=None, scale=None):
     :return:
     """
     n_features = x_list[0].shape[1]
-    if offset == None or scale == None:
+    if offset is None or scale is None:
         x_min = np.min(np.array([x.min(axis=0) if x.shape[0] > 0
                                  else [np.nan] * n_features for x in x_list]), axis=0)
         x_max = np.max(np.array([x.max(axis=0) if x.shape[0] > 0
@@ -243,7 +248,7 @@ def normalize_x_list(x_list, offset=None, scale=None):
     return normalized_x_list, offset, scale
 
 
-def normalize_x_list_multiple_panels(x_list):
+def normalize_x_list_multiple_panels(x_list, offset=None, scale=None):
     """
 
     :param x_list: a list of a list of numpy arrays, each numpy array is the fc measurements of one panel for one sample
@@ -253,15 +258,57 @@ def normalize_x_list_multiple_panels(x_list):
     """
     n_panels = len(x_list[0])
     x_list = list(map(list, zip(*x_list)))
-    offset = [None] * n_panels
-    scale = [None] * n_panels
+    if offset is None:
+        offset = [None] * n_panels
+        scale = [None] * n_panels
     normalized_x_list = [None] * n_panels
     for panel_idx in range(n_panels):
         normalized_x_list[panel_idx], offset[panel_idx], scale[panel_idx] = normalize_x_list(x_list[panel_idx])
+
+    # Data must be normalized with the same values, otherwise we introduce systematic shifting between the two
+    # panels, and mess up the heuristic initialization. (Just plot the results of using the last two commented out
+    # lines if you dont believe me.
+    #normalized_x_list[0], offset[0], scale[0] = normalize_x_list(x_list[0])
+    #normalized_x_list_p2_feats_in_both, offset[1], scale[1] = normalize_x_list([ x[:, 0:6] for x in x_list[1]], offset=offset[0][0:6], scale=scale[0][0:6])
+    #normalized_x_list_just_p2_feats, offset_just_p2, scale_just_p2 = normalize_x_list([x[:, 6:] for x in x_list[1]])
+    #normalized_x_list[1] = [np.hstack([x_just_p2, x_p2_both]) for x_just_p2, x_p2_both in zip(normalized_x_list_just_p2_feats, normalized_x_list_p2_feats_in_both)]
+    #offset[1] = np.concatenate([offset[1], offset_just_p2])
+    #scale[1] = np.concatenate([scale[1], scale_just_p2])
+    
+    p1_mean_feats_in_both = np.mean(np.concatenate(normalized_x_list[0]), axis=0)[0:6]
+    p2_mean_feats_in_both = np.mean(np.concatenate(normalized_x_list[1]), axis=0)[0:6]
+    shift = p1_mean_feats_in_both - p2_mean_feats_in_both
+    for i, x in enumerate(normalized_x_list[1]):
+        x[:, 0:6] = x[:, 0:6] + shift
+        normalized_x_list[1][i][:, 0:6] = x[:, 0:6]
+    #normalized_x_list[1] = [x[np.where(x >= 0)[0], :][np.where(x <=1), :] for x in normalized_x_list[1]]
     normalized_x_list = list(map(list, zip(*normalized_x_list)))
     return normalized_x_list, offset, scale
 
 
+def normalize_nested_tree_both_panels(nested_tree, offset, scale, feature2id):
+    """
+    normalized_x = (x - offset) / scale
+    :param nested_tree:
+    :param offset: a list of numpy arrays of shape (n_cell_features, ) of length n_panels
+    :param scale: a list of numpy array of shape (n_cell_featuers, ) of length n_panels
+    :param feature2id: a list of dictionaries that maps feature names to column idx of length n_panels
+    :return:
+    """
+    if nested_tree == []:
+        return []
+    # normalize the root node
+    gate = nested_tree[0]
+    panel = gate[2]
+    panel_id = 1 if panel == 'p2' else 0
+    dim1, dim2 = feature2id[panel_id][gate[0][0]], feature2id[panel_id][gate[1][0]]
+    gate[0][1] = (gate[0][1] - offset[panel_id][dim1]) / scale[panel_id][dim1]
+    gate[0][2] = (gate[0][2] - offset[panel_id][dim1]) / scale[panel_id][dim1]
+    gate[1][1] = (gate[1][1] - offset[panel_id][dim2]) / scale[panel_id][dim2]
+    gate[1][2] = (gate[1][2] - offset[panel_id][dim2]) / scale[panel_id][dim2]
+
+    return [gate, [normalize_nested_tree_both_panels(child, offset, scale, feature2id)
+                   for child in nested_tree[1]]]
 def normalize_nested_tree(nested_tree, offset, scale, feature2id):
     """
     normalized_x = (x - offset) / scale

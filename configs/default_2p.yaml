@@ -1,0 +1,5 @@
+experiment_name: 'default_p2'
+
+data:
+    features_path: '../data/cll/Both_Panels_FINAL/x_2p_val.pkl'
+    labels_path: '../data/cll/Both_Panels_FINAL/y_2p_val.pkl'

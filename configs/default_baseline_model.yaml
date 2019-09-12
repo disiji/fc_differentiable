@@ -1,0 +1,28 @@
+random_seed: 0
+path_to_data_csv: '../data/cll/8d_FINAL/x_all.csv'
+columns_to_cluster: ['FSC-A', 'SSC-H', 'CD45', 'SSC-A', 'CD5', 'CD19', 'CD10', 'CD79b']
+subsampling: 0.01
+
+flowsom_params:
+        num_to_subsample: 10000
+        L1_logreg_penalty: 1000000000000000
+        som_params:
+                grid_size: 100
+                weight_init_stdev: 2.5
+                som_lr: .1
+                num_iters: 1000
+        meta_cluster_params:
+                algorithm: 'AgglomerativeClustering'
+                min_k: 2
+                max_k: 3
+                iters_per_random_restart: 50
+
+kmeans_params:
+        num_clusters: 10
+        subsample_frac: .0001
+        min_number_of_cells: 1000
+        n_init: 1
+
+
+
+
