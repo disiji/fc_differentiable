@@ -1,4 +1,3 @@
-import pickle
 import yaml
 
 default_hparams = {
@@ -21,7 +20,7 @@ default_hparams = {
     'learning_rate_classifier': 0.05,
     'learning_rate_gates': 0.05,
     'batch_size': 10,
-    'n_epoch': 1000, 
+    'n_epoch': 1000,
     'seven_epochs_for_gate_motion_plot': [0, 50, 100, 200, 300, 400, 500],
     'test_size': 0.20,
     'experiment_name': 'default',
@@ -43,13 +42,14 @@ default_hparams = {
         'turn_on': False,
         'num_only_log_loss_epochs': 50
     },
-    'plot_params':{
+    'plot_params': {
         'figsize': [10, 10],
         'marker_size': .01,
     },
     'use_out_of_sample_eval_data': False,
     'dictionary_is_broken': False
 }
+
 
 class ParameterParser:
 
@@ -63,7 +63,7 @@ class ParameterParser:
         self.hparams.update(params_from_file)
         self.hparams['init_method'] = \
             "dafi_init" if self.hparams['dafi_init'] \
-            else "random_init"
+                else "random_init"
 
         if self.hparams['train_alternate']:
             self.hparams['n_epoch_dafi'] = self.hparams['n_epoch'] // self.hparams['n_mini_batch_update_gates'] * (
@@ -72,5 +72,3 @@ class ParameterParser:
             self.hparams['n_epoch_dafi'] = self.hparams['n_epoch']
 
         return self.hparams
-
-

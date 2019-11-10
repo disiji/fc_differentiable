@@ -1,20 +1,20 @@
-from sklearn.cluster import KMeans as sk_KMeans
-from sklearn.linear_model import LogisticRegression
 import numpy as np
 import pandas as pd
+from sklearn.cluster import KMeans as sk_KMeans
+from sklearn.linear_model import LogisticRegression
+
 
 class KMeans:
 
     def __init__(self, path_to_data_csv, model_params, random_state=0):
         self._kmeans = \
             sk_KMeans(
-                n_clusters = model_params['num_clusters'],
-                n_init = model_params['n_init'],
+                n_clusters=model_params['num_clusters'],
+                n_init=model_params['n_init'],
                 random_state=random_state
             )
         self.concat_data, self.labels, self.data_by_sample = self._load_data(path_to_data_csv, model_params)
         self.logistic_regressor = LogisticRegression(penalty='l1', C=1e10)
-
 
     def _load_data(self, path_to_data_csv, model_params):
         pd_data_with_labels = pd.read_csv(path_to_data_csv)
@@ -25,13 +25,13 @@ class KMeans:
         for i in range(pd_data_with_labels['sample_ids'].nunique()):
 
             sample_df = pd_data_with_labels[pd_data_with_labels['sample_ids'] == i]
-            if not(len(sample_df) * model_params['subsample_frac'] < model_params['min_number_of_cells']):
-                sample = sample_df.values[np.random.permutation(len(sample_df))][0: int(len(sample_df) * model_params['subsample_frac'])]
+            if not (len(sample_df) * model_params['subsample_frac'] < model_params['min_number_of_cells']):
+                sample = sample_df.values[np.random.permutation(len(sample_df))][
+                         0: int(len(sample_df) * model_params['subsample_frac'])]
             else:
                 sample = sample_df.values[np.random.permutation(len(sample_df))][0: model_params['min_number_of_cells']]
             data_by_sample.append(sample[:, 0:8])
             labels.append(sample_df['labels'].values[0])
-
 
         data_with_labels = pd_data_with_labels.values
         concat_data = data_with_labels[:, 0:8]
@@ -58,7 +58,7 @@ class KMeans:
 
         proportions = []
         for cluster_idx in range(cluster_centers.shape[0]):
-            cur_prop = np.sum(closest_clusters == cluster_idx)/sample.shape[0]
+            cur_prop = np.sum(closest_clusters == cluster_idx) / sample.shape[0]
             proportions.append(cur_prop)
         return proportions
 
@@ -79,25 +79,6 @@ class KMeans:
     def get_training_accuracy(self):
         if self.predictions is None:
             preds = self.predict_all_samples()
-            return np.sum(self.labels == preds)/(len(self.labels))
+            return np.sum(self.labels == preds) / (len(self.labels))
         else:
-            return np.sum(self.labels == self.predictions)/len(self.labels)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            return np.sum(self.labels == self.predictions) / len(self.labels)

@@ -4,6 +4,8 @@ import numpy as np
 model1/model2: ModelTree objects to compare the cell overlaps for their gates
 data_list: list of numpy arrays of data per sample
 '''
+
+
 class CellOverlaps:
 
     def __init__(self, model1, model2, data_list, is_4chain=False):
@@ -17,6 +19,7 @@ class CellOverlaps:
     end of each cells marker values. 
     (ie an extra row is added for ids)
     '''
+
     def _init_data_with_ids(self, data_list):
         last_cell_idx = 0
         data_list_with_ids = []
@@ -24,7 +27,7 @@ class CellOverlaps:
             cur_data_idxs = last_cell_idx + np.arange(data.shape[0])
             data_with_ids = np.hstack([data, cur_data_idxs[:, np.newaxis]])
             data_list_with_ids.append(data_with_ids)
-            last_cell_idx = last_cell_idx + len(cur_data_idxs)        
+            last_cell_idx = last_cell_idx + len(cur_data_idxs)
         return data_list_with_ids
 
     def compute_overlap_diagnostics(self):
@@ -45,16 +48,17 @@ class CellOverlaps:
             in_m2_leaf_not_m1 = self.compute_in_m2_not_m1(model1_leaf_data, model2_leaf_data)
             overlap_diagnostics.append(
                 (
-                    num_overlap, 
-                    in_m1_leaf_not_m2, 
+                    num_overlap,
+                    in_m1_leaf_not_m2,
                     in_m2_leaf_not_m1,
                     model1_leaf_data.shape[0],
                     model2_leaf_data.shape[0]
                 )
             )
-            assert(in_m1_leaf_not_m2 + in_m2_leaf_not_m1 + 2 * num_overlap == model1_leaf_data.shape[0] + model2_leaf_data.shape[0])
+            assert (in_m1_leaf_not_m2 + in_m2_leaf_not_m1 + 2 * num_overlap == model1_leaf_data.shape[0] +
+                    model2_leaf_data.shape[0])
         return np.array(overlap_diagnostics)
-    
+
     def compute_overlaps_single_data_array(self, data1, data2):
         ids1 = data1[:, -1]
         ids2 = data2[:, -1]
@@ -70,13 +74,3 @@ class CellOverlaps:
     def compute_in_m2_not_m1(self, data1, data2):
         # just flip argument order
         return self.compute_in_m1_not_m2(data2, data1)
-
-
-            
-
-        
-
-        
-
-
-        

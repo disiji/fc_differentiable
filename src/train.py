@@ -1,21 +1,18 @@
-import sys
 import time
-from copy import deepcopy
 from random import shuffle
 
+import matplotlib.pyplot as plt
+import torch.nn as nn
 from sklearn.metrics import brier_score_loss
 from sklearn.metrics import roc_auc_score
 
 from utils import utils_plot as util_plot
-from utils.input import *
-from utils.utils_train import Tracker
-from utils.input import CLLInputBase
-import matplotlib.pyplot as plt
-import torch.nn as nn
-from utils.bayes_gate import ModelTree
-from utils.input import Cll4d1pInput
-from utils.input import Cll8d1pInput
 from utils.CellOverlaps import CellOverlaps
+from utils.bayes_gate import ModelTree
+from utils.input import *
+from utils.input import Cll8d1pInput
+from utils.utils_train import Tracker
+
 
 def run_train_dafi(dafi_model, hparams, input):
     """
@@ -49,29 +46,31 @@ def run_train_dafi(dafi_model, hparams, input):
             dafi_optimizer_classifier.step()
         if epoch % hparams['n_epoch_eval'] == 0:
             y_pred = (dafi_model(input.x, input.y)['y_pred'].detach().numpy() > 0.5) * 1.0
-            print("Accuracy as Epoch %d: %.3f" % (epoch, sum((y_pred == input.y.numpy()) ) / input.y.shape[0]))
+            print("Accuracy as Epoch %d: %.3f" % (epoch, sum((y_pred == input.y.numpy())) / input.y.shape[0]))
     print("Running time for training classifier with DAFi gates: %.3f seconds." % (time.time() - start))
     return dafi_model
 
-#Does training with full_batch for just the classifier weights until convergence with adam. Also no tr/te split-for use with just dev data
-def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_thresh=1e-10, verbose=True, log_features=None):
-    start = time.time() 
+
+# Does training with full_batch for just the classifier weights until convergence with adam. Also no tr/te split-for use with just dev data
+def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_thresh=1e-10, verbose=True,
+                                       log_features=None):
+    start = time.time()
     classifier_params = [model.linear.weight, model.linear.bias]
     optimizer_classifier = torch.optim.Adam(classifier_params, lr=adam_lr)
     if log_features is None:
         output = model(x_tensor_list, y, detach_logistic_params=True)
         log_features = output['leaf_logp']
     BCEWithLogits = nn.BCEWithLogitsLoss()
-    #these are called log_probs in the forwards function, but
-    #calling them log_features is more consistent with our
-    #previous usages in the paper and code
-    
-    prev_loss = -10 #making sure the loop starts
+    # these are called log_probs in the forwards function, but
+    # calling them log_features is more consistent with our
+    # previous usages in the paper and code
+
+    prev_loss = -10  # making sure the loop starts
     delta = 50
     iters = 0
     while delta > conv_thresh:
-        #features are fixed here, the only thing we need is the change in log loss from logistic params
-        #forward pass through entire model is uneccessary!
+        # features are fixed here, the only thing we need is the change in log loss from logistic params
+        # forward pass through entire model is uneccessary!
         log_loss = BCEWithLogits(model.linear(log_features).squeeze(), y)
         optimizer_classifier.zero_grad()
         log_loss.backward()
@@ -81,30 +80,31 @@ def run_train_only_logistic_regression(model, x_tensor_list, y, adam_lr, conv_th
         iters += 1
         if verbose:
             print(log_loss.item())
-            if iters%100 == 0:
-                print('%.6f ' %(delta), end='')
-                if iters%500 == 0:
+            if iters % 100 == 0:
+                print('%.6f ' % (delta), end='')
+                if iters % 500 == 0:
                     print('\n')
             print('\n')
-            print('time taken %d, with loss %.2f' %(time.time() - start, log_loss.detach().item()))
+            print('time taken %d, with loss %.2f' % (time.time() - start, log_loss.detach().item()))
     return model
+
 
 def init_model_trackers_and_optimizers(hparams, input, model_checkpoint, return_new_model=False, model=None):
     if return_new_model:
         model = ModelTree(input.reference_tree,
-                               logistic_k=hparams['logistic_k'],
-                               regularisation_penalty=hparams['regularization_penalty'],
-                               negative_box_penalty=hparams['negative_box_penalty'],
-                               positive_box_penalty=hparams['positive_box_penalty'],
-                               corner_penalty=hparams['corner_penalty'],
-                               gate_size_penalty=hparams['gate_size_penalty'],
-                               feature_diff_penalty=hparams['feature_diff_penalty'],
-                               init_tree=input.init_tree,
-                               loss_type=hparams['loss_type'],
-                               gate_size_default=hparams['gate_size_default'],
-                               neg_proportion_default=hparams['neg_proportion_default'],
-                               node_type=hparams['node_type']
-        )
+                          logistic_k=hparams['logistic_k'],
+                          regularisation_penalty=hparams['regularization_penalty'],
+                          negative_box_penalty=hparams['negative_box_penalty'],
+                          positive_box_penalty=hparams['positive_box_penalty'],
+                          corner_penalty=hparams['corner_penalty'],
+                          gate_size_penalty=hparams['gate_size_penalty'],
+                          feature_diff_penalty=hparams['feature_diff_penalty'],
+                          init_tree=input.init_tree,
+                          loss_type=hparams['loss_type'],
+                          gate_size_default=hparams['gate_size_default'],
+                          neg_proportion_default=hparams['neg_proportion_default'],
+                          node_type=hparams['node_type']
+                          )
     else:
         model = model
     classifier_params = [model.linear.weight, model.linear.bias]
@@ -119,7 +119,7 @@ def init_model_trackers_and_optimizers(hparams, input, model_checkpoint, return_
 
     train_tracker = Tracker()
     eval_tracker = None
-    if not((input.x_eval is None) and (input.split_fold_idxs is None)):
+    if not ((input.x_eval is None) and (input.split_fold_idxs is None)):
         eval_tracker = Tracker()
         eval_tracker.model_init = deepcopy(model)
     train_tracker.model_init = deepcopy(model)
@@ -145,6 +145,7 @@ def free_memory(variables_to_free):
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
+
 def gate_size_large_enough(model, min_gate_size):
     flat_gates = model.get_flattened_gates()
     for gate in flat_gates:
@@ -154,31 +155,43 @@ def gate_size_large_enough(model, min_gate_size):
             return False
     return True
 
+
 def run_train_dafi_logreg_to_conv(dafi_model, hparams, input):
     DAFI_LR = 0.001
     eval_tracker = Tracker()
     train_tracker = Tracker()
     train_tracker.model_init = deepcopy(dafi_model)
     eval_tracker.model_init = deepcopy(dafi_model)
-    train_tracker.update(dafi_model, dafi_model(input.x_train, input.y_train, use_hard_proportions=True, device=hparams['device']), input.y_train, 0, 1)
-    eval_tracker.update(dafi_model, dafi_model(input.x_eval, input.y_eval, use_hard_proportions=True, device=hparams['device']), input.y_eval, 0, 1)
-    output_detached = dafi_model(input.x_train, input.y_train, detach_logistic_params=True, use_hard_proportions=True, device=hparams['device'])
+    train_tracker.update(dafi_model,
+                         dafi_model(input.x_train, input.y_train, use_hard_proportions=True, device=hparams['device']),
+                         input.y_train, 0, 1)
+    eval_tracker.update(dafi_model,
+                        dafi_model(input.x_eval, input.y_eval, use_hard_proportions=True, device=hparams['device']),
+                        input.y_eval, 0, 1)
+    output_detached = dafi_model(input.x_train, input.y_train, detach_logistic_params=True, use_hard_proportions=True,
+                                 device=hparams['device'])
     run_train_only_logistic_regression(
-            dafi_model, 
-            input.x_train,
-            input.y_train, 
-            0.001,
-            verbose=False,
-            log_features = output_detached['leaf_logp']
+        dafi_model,
+        input.x_train,
+        input.y_train,
+        0.001,
+        verbose=False,
+        log_features=output_detached['leaf_logp']
     )
-    train_tracker.update(dafi_model, dafi_model(input.x_train, input.y_train, use_hard_proportions=True, device=hparams['device']), input.y_train, 0, 1)
-    eval_tracker.update(dafi_model, dafi_model(input.x_eval, input.y_eval, use_hard_proportions=True, device=hparams['device']), input.y_eval, 0, 1)
+    train_tracker.update(dafi_model,
+                         dafi_model(input.x_train, input.y_train, use_hard_proportions=True, device=hparams['device']),
+                         input.y_train, 0, 1)
+    eval_tracker.update(dafi_model,
+                        dafi_model(input.x_eval, input.y_eval, use_hard_proportions=True, device=hparams['device']),
+                        input.y_eval, 0, 1)
     return dafi_model, train_tracker, eval_tracker
+
 
 def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=False, gradient_clipping=10):
     start = time.time()
 
-    train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict = init_model_trackers_and_optimizers(hparams, input, model_checkpoint, return_new_model=False, model=model)
+    train_tracker, eval_tracker, optimizer_classifier, optimizer_gates, model_checkpoint_dict = init_model_trackers_and_optimizers(
+        hparams, input, model_checkpoint, return_new_model=False, model=model)
 
     for epoch in range(hparams['n_epoch']):
         x_train = input.x_train
@@ -187,7 +200,8 @@ def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=
         optimizer_gates.zero_grad()
         optimizer_classifier.zero_grad()
         output_detached = model(x_train, y_train, detach_logistic_params=True, device=hparams['device'])
-        run_train_only_logistic_regression(model, x_train, y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
+        run_train_only_logistic_regression(model, x_train, y_train, hparams['learning_rate_classifier'], verbose=False,
+                                           log_features=output_detached['leaf_logp'])
         output = model(x_train, y_train, device=hparams['device'])
         loss = output['loss']
         loss.backward()
@@ -196,34 +210,37 @@ def run_train_full_batch_logreg_to_conv(hparams, input, model, model_checkpoint=
         # print every n_batch_print mini-batches
         if epoch % hparams['n_epoch_eval'] == 0:
             # stats on train
-            train_tracker.update(model, model(input.x_train, input.y_train, device=hparams['device']), input.y_train, epoch, 1)
-            if not((input.x_eval is None) and (input.split_fold_idxs is None)):
-                eval_tracker.update(model, model(input.x_eval, input.y_eval, device=hparams['device']), input.y_eval, epoch, 1)
+            train_tracker.update(model, model(input.x_train, input.y_train, device=hparams['device']), input.y_train,
+                                 epoch, 1)
+            if not ((input.x_eval is None) and (input.split_fold_idxs is None)):
+                eval_tracker.update(model, model(input.x_eval, input.y_eval, device=hparams['device']), input.y_eval,
+                                    epoch, 1)
 
-            loss_tuple = (epoch, 1, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:', train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1], 'init_reg', train_tracker.init_reg_loss[-1], 'prop_diff_reg:', train_tracker.feature_diff_loss[-1])
-            print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
-        
-
+            loss_tuple = (
+                epoch, 1, 'full loss:', train_tracker.loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'acc:',
+                train_tracker.acc[-1], 'neg_prop_reg:', train_tracker.neg_prop_loss[-1], 'init_reg',
+                train_tracker.init_reg_loss[-1], 'prop_diff_reg:', train_tracker.feature_diff_loss[-1])
+            print('[Epoch %d, batch %d]  %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' % loss_tuple)
 
         epoch_list = hparams['seven_epochs_for_gate_motion_plot']
         if model_checkpoint:
-            if epoch+1 in epoch_list:#[100, 200, 300, 400, 500, 600]:
-                model_checkpoint_dict[epoch+1] = deepcopy(model)
+            if epoch + 1 in epoch_list:  # [100, 200, 300, 400, 500, 600]:
+                model_checkpoint_dict[epoch + 1] = deepcopy(model)
 
     # train the logistic regressor one more time with hard weights?
     # update the logistic weights to the current
     # features
     output_detached = model(input.x_train, input.y_train, detach_logistic_params=True, device=hparams['device'])
-    run_train_only_logistic_regression(model, input.x_train, input.y_train, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
+    run_train_only_logistic_regression(model, input.x_train, input.y_train, hparams['learning_rate_classifier'],
+                                       verbose=False, log_features=output_detached['leaf_logp'])
     # update trackers one more time 
     train_tracker.update(model, model(input.x_train, input.y_train, device=hparams['device']), input.y_train, epoch, 1)
-    if not((input.x_eval is None) and (input.split_fold_idxs is None)):
+    if not ((input.x_eval is None) and (input.split_fold_idxs is None)):
         eval_tracker.update(model, model(input.x_eval, input.y_eval, device=hparams['device']), input.y_eval, epoch, 1)
 
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))
 
     return model, train_tracker, eval_tracker, time.time() - start, model_checkpoint_dict
-
 
 
 def run_train_model(model, hparams, input, model_checkpoint=False):
@@ -247,7 +264,7 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
 
     train_tracker = Tracker()
     eval_tracker = None
-    if not(hparams['test_size'] == 0.):
+    if not (hparams['test_size'] == 0.):
         eval_tracker = Tracker()
         eval_tracker.model_init = deepcopy(model)
     train_tracker.model_init = deepcopy(model)
@@ -264,15 +281,14 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
         shuffle(idx_shuffle)
         x_train = [input.x_train[_] for _ in idx_shuffle]
         y_train = input.y_train[idx_shuffle]
-    
-        
+
         if hparams['annealing']['anneal_logistic_k']:
-            #reach the final k by the last epoch starting at init_k
+            # reach the final k by the last epoch starting at init_k
             final_k = hparams['annealing']['final_k']
             init_k = hparams['annealing']['init_k']
-            rate = np.log(final_k/init_k) * 1./(hparams['n_epoch'])
+            rate = np.log(final_k / init_k) * 1. / (hparams['n_epoch'])
             model.logistic_k = hparams['annealing']['init_k'] * np.exp(rate * epoch)
-            print('Current sharpness %.2f' %(model.logistic_k))
+            print('Current sharpness %.2f' % (model.logistic_k))
 
         for i in range(len(x_train) // hparams['batch_size']):
             idx_batch = [j for j in range(hparams['batch_size'] * i, hparams['batch_size'] * (i + 1))]
@@ -295,7 +311,8 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
             loss.backward()
             if hparams['train_alternate'] == True:
                 if hparams['run_logistic_to_convergence'] == True:
-                    run_train_only_logistic_regression(model, x_batch, y_batch, hparams['learning_rate_classifier'], verbose=False, log_features=output_detached['leaf_logp'])
+                    run_train_only_logistic_regression(model, x_batch, y_batch, hparams['learning_rate_classifier'],
+                                                       verbose=False, log_features=output_detached['leaf_logp'])
                     optimizer_gates.step()
                 else:
                     if (len(x_train) // hparams['batch_size'] * epoch + i) % hparams['n_mini_batch_update_gates'] == 0:
@@ -311,12 +328,16 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
         if epoch % hparams['n_epoch_eval'] == 0:
             # stats on train
             train_tracker.update(model, model(input.x_train, input.y_train), input.y_train, epoch, i)
-            if not(hparams['test_size'] == 0.):
+            if not (hparams['test_size'] == 0.):
                 eval_tracker.update(model, model(input.x_eval, input.y_eval), input.y_eval, epoch, i)
 
             if hparams['test_size'] == 0.:
-                loss_tuple = (epoch, i, 'full loss:', train_tracker.loss[-1], 'ref_reg:', train_tracker.ref_reg_loss[-1], 'size_reg:', train_tracker.size_reg_loss[-1], 'corner_reg:', train_tracker.corner_reg_loss[-1], 'acc:', train_tracker.acc[-1])
-                print('[Epoch %d, batch %d] %s %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' %loss_tuple)
+                loss_tuple = (
+                    epoch, i, 'full loss:', train_tracker.loss[-1], 'ref_reg:', train_tracker.ref_reg_loss[-1],
+                    'size_reg:',
+                    train_tracker.size_reg_loss[-1], 'corner_reg:', train_tracker.corner_reg_loss[-1], 'acc:',
+                    train_tracker.acc[-1])
+                print('[Epoch %d, batch %d] %s %.3f, %s, %.3f, %s, %.3f, %s, %.3f, %s, %.3f' % loss_tuple)
             else:
                 print('[Epoch %d, batch %d] training, eval loss: %.3f, %.3f' % (
                     epoch, i, train_tracker.loss[-1], eval_tracker.loss[-1]))
@@ -331,17 +352,18 @@ def run_train_model(model, hparams, input, model_checkpoint=False):
 
         epoch_list = hparams['seven_epochs_for_gate_motion_plot']
         if model_checkpoint:
-            if epoch+1 in epoch_list:#[100, 200, 300, 400, 500, 600]:
-                model_checkpoint_dict[epoch+1] = deepcopy(model)
+            if epoch + 1 in epoch_list:  # [100, 200, 300, 400, 500, 600]:
+                model_checkpoint_dict[epoch + 1] = deepcopy(model)
     print("Running time for training %d epoch: %.3f seconds" % (hparams['n_epoch'], time.time() - start))
-    if not(hparams['test_size']) == 0.:
+    if not (hparams['test_size']) == 0.:
         print("Optimal acc on train and eval during training process: %.3f at [Epoch %d, batch %d] "
-          "and %.3f at [Epoch %d, batch %d]" % (
-              train_tracker.acc_opt, train_tracker.n_iter_opt[0], train_tracker.n_iter_opt[1], eval_tracker.acc_opt,
-              eval_tracker.n_iter_opt[0],
-              eval_tracker.n_iter_opt[1],))
+              "and %.3f at [Epoch %d, batch %d]" % (
+                  train_tracker.acc_opt, train_tracker.n_iter_opt[0], train_tracker.n_iter_opt[1], eval_tracker.acc_opt,
+                  eval_tracker.n_iter_opt[0],
+                  eval_tracker.n_iter_opt[1],))
 
     return model, train_tracker, eval_tracker, time.time() - start, model_checkpoint_dict
+
 
 def convert_gate(gate):
     if type(gate).__name__ == 'ModelNode':
@@ -352,7 +374,7 @@ def convert_gate(gate):
         gate_upp1 = torch.sigmoid(gate.gate_upp1_param).item()
 
         gate_upp2 = torch.sigmoid(gate.gate_upp2_param).item()
-    
+
     else:
         gate_low1 = gate.gate_low1
 
@@ -362,48 +384,49 @@ def convert_gate(gate):
 
         gate_upp2 = gate.gate_upp2
 
-    return([gate_low1, gate_upp1, gate_low2, gate_upp2])
+    return ([gate_low1, gate_upp1, gate_low2, gate_upp2])
 
-   
+
 def test_overlap_p1_single_node():
     test_gate1 = [0, .5, 0, .25]
     test_gate2 = [.25, .5, 0, .25]
     test_gate3 = [0, .25, 0, .1]
     test_gate4 = [0, 1, 0, 1]
-    assert(get_overlap_p1_single_node(test_gate1, test_gate1) == 1/8)
-    assert(get_overlap_p1_single_node(test_gate1, test_gate2) == 1/16)
-    assert(get_overlap_p1_single_node(test_gate2, test_gate1) == 1/16)
-    assert(get_overlap_p1_single_node(test_gate1, test_gate3) == 1/40)
-    assert(get_overlap_p1_single_node(test_gate3, test_gate1) == 1/40)
-    assert(get_overlap_p1_single_node(test_gate1, test_gate4) == 1/8) 
+    assert (get_overlap_p1_single_node(test_gate1, test_gate1) == 1 / 8)
+    assert (get_overlap_p1_single_node(test_gate1, test_gate2) == 1 / 16)
+    assert (get_overlap_p1_single_node(test_gate2, test_gate1) == 1 / 16)
+    assert (get_overlap_p1_single_node(test_gate1, test_gate3) == 1 / 40)
+    assert (get_overlap_p1_single_node(test_gate3, test_gate1) == 1 / 40)
+    assert (get_overlap_p1_single_node(test_gate1, test_gate4) == 1 / 8)
+
 
 def run_write_overlap_diagnostics(model, dafi_tree, data_list, labels, hparams):
     overlaps = CellOverlaps(model, dafi_tree, data_list)
     overlap_diagnostics = overlaps.compute_overlap_diagnostics()
-    path_to_output = '../output/%s/leaf_overlap_diagnostics.csv' %hparams['experiment_name']
+    path_to_output = '../output/%s/leaf_overlap_diagnostics.csv' % hparams['experiment_name']
     with open(path_to_output, 'a+') as f:
         col_names = (
-                'in both', 
-                'in model but not DAFI', 
-                'in DAFI but not model',
-                'cells in model leaf',
-                'cells in DAFI leaf',
-                'labels',
+            'in both',
+            'in model but not DAFI',
+            'in DAFI but not model',
+            'cells in model leaf',
+            'cells in DAFI leaf',
+            'labels',
         )
-        f.write('%s, %s, %s, %s, %s,  %s\n' %col_names)
+        f.write('%s, %s, %s, %s, %s,  %s\n' % col_names)
         for i, overlap_diagnostic in enumerate(overlap_diagnostics):
-            f.write('%d, %d, %d, %d, %d' %(tuple(overlap_diagnostic)))
-            f.write(', %d\n' %labels[i])
+            f.write('%d, %d, %d, %d, %d' % (tuple(overlap_diagnostic)))
+            f.write(', %d\n' % labels[i])
 
 
-        
-def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, train_tracker, eval_tracker, run_time, model_checkpoint_dict):
+def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, train_tracker, eval_tracker, run_time,
+                                            model_checkpoint_dict):
     y_score = model(input.x_train, input.y_train)['y_pred'].cpu().detach().numpy()
     y_pred = (y_score > 0.5) * 1.0
     overall_accuracy = sum(y_pred == input.y.cpu().numpy()) * 1.0 / len(input.x)
     if not type(input) == Cll8d1pInput:
         dafi_ratio_inter_union = get_dafi_intersection_over_union_p1_avg(model, dafi_tree)
-    log_loss = model(input.x_train, input.y_train)['log_loss'].cpu().detach().numpy() 
+    log_loss = model(input.x_train, input.y_train)['log_loss'].cpu().detach().numpy()
 
     with open('../output/%s/model_classifier_weights.csv' % hparams['experiment_name'], "a+") as file:
         bias = str(model.linear.bias.detach().item())
@@ -422,8 +445,8 @@ def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, tr
             'log_loss': log_loss,
             'dafi_overlap_ratio': dafi_ratio_inter_union,
             'run_time': run_time
-            }
-                
+        }
+
     else:
         with open('../output/%s/results_cll_4D.csv' % hparams['experiment_name'], "a+") as file:
             results_names = 'seed, overall_acc, log_loss, run_time, '
@@ -433,18 +456,17 @@ def run_lightweight_output_no_split_no_dafi(model, dafi_tree, hparams, input, tr
                     hparams['random_state'], overall_accuracy,
                     log_loss, run_time
                 ))
-    
+
         output = {
             "overall_accuracy": overall_accuracy,
             'log_loss': log_loss,
             'run_time': run_time
-            }
-    with open('../output/%s/model.pkl' %(hparams['experiment_name']), 'wb') as f:
+        }
+    with open('../output/%s/model.pkl' % (hparams['experiment_name']), 'wb') as f:
         pickle.dump(model, f)
 
-    with open('../output/%s/model_checkpoints.pkl' %(hparams['experiment_name']), 'wb') as f:
-            pickle.dump(model_checkpoint_dict, f)
-
+    with open('../output/%s/model_checkpoints.pkl' % (hparams['experiment_name']), 'wb') as f:
+        pickle.dump(model_checkpoint_dict, f)
 
     return output
 
@@ -565,11 +587,7 @@ def run_plot_metric(hparams, train_tracker, eval_tracker, dafi_tree, input, outp
                            output_metric_dict)
 
 
-
-
-
 def run_write_prediction(model_tree, dafi_tree, input, hparams):
-
     with open("../output/%s/features_model.csv" % hparams['experiment_name'], "a+") as file:
         file.write("%d\n" % hparams['random_state'])
         np.savetxt(file, model_tree(input.x, input.y)['leaf_logp'].cpu().detach().numpy(), delimiter=',')
@@ -588,5 +606,4 @@ def run_write_prediction(model_tree, dafi_tree, input, hparams):
     plt.scatter(pos_feats[:, 1], pos_feats[:, 0], color='r')
     plt.scatter(neg_feats[:, 1], neg_feats[:, 0], color='b')
     plt.title('features for each sample')
-    plt.savefig('../output/%s/features_scatter_for_most_recent_run.png' %hparams['experiment_name'])
-
+    plt.savefig('../output/%s/features_scatter_for_most_recent_run.png' % hparams['experiment_name'])

@@ -1,5 +1,5 @@
 from __future__ import division
-import matplotlib.pyplot as plt
+
 import os
 import pickle
 
@@ -91,7 +91,7 @@ def filter_rectangle(data, dim1, dim2, x1, x2, y1, y2, return_idx=False):
     if x1 > x2 or y1 > y2:
         raise ValueError("x2 should be greater than x1, y2 should be greater than y1.")
     idx = (data[:, dim1] > x1) & (data[:, dim1] < x2) & (data[:, dim2] > y1) & (data[:, dim2] < y2)
-    #idx = (data[:, dim1] >= x1) & (data[:, dim1] <= x2) & (data[:, dim2] >= y1) & (data[:, dim2] <= y2)
+    # idx = (data[:, dim1] >= x1) & (data[:, dim1] <= x2) & (data[:, dim2] >= y1) & (data[:, dim2] <= y2)
 
     if return_idx:
         return idx
@@ -120,6 +120,7 @@ def filter_cll_4d_pb1(x_list):
 
     return filtered_x_list_4d
 
+
 def filter_cll_8d_pb1(x_list):
     """
 
@@ -129,7 +130,7 @@ def filter_cll_8d_pb1(x_list):
     idx = 3
     filtered_x_list = [filter_slope(x, 0, 1, 2048, 4096, 2048, 2560) for x in x_list]
     print('After first slope gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
-    filtered_x_list_8d = [x[:, [0,2,3,4,5,6,7,8]] for x in filtered_x_list]
+    filtered_x_list_8d = [x[:, [0, 2, 3, 4, 5, 6, 7, 8]] for x in filtered_x_list]
 
     return filtered_x_list_8d
 
@@ -165,7 +166,7 @@ def filter_cll_10d_pb2(x_list):
 
     filtered_x_list = [filter_slope(x, 0, 1, 2048, 4096, 2048, 2560) for x in x_list]
     print('After first slope gate %d remain in sample %s' % (filtered_x_list[idx].shape[0], idx))
-    filtered_x_list_10d = [x_list[:, [0,2,3,4,5,6,7,8,9,10]] for x_list in filtered_x_list]
+    filtered_x_list_10d = [x_list[:, [0, 2, 3, 4, 5, 6, 7, 8, 9, 10]] for x_list in filtered_x_list]
 
     return filtered_x_list_10d
 
@@ -268,20 +269,20 @@ def normalize_x_list_multiple_panels(x_list, offset=None, scale=None):
     # Data must be normalized with the same values, otherwise we introduce systematic shifting between the two
     # panels, and mess up the heuristic initialization. (Just plot the results of using the last two commented out
     # lines if you dont believe me.
-    #normalized_x_list[0], offset[0], scale[0] = normalize_x_list(x_list[0])
-    #normalized_x_list_p2_feats_in_both, offset[1], scale[1] = normalize_x_list([ x[:, 0:6] for x in x_list[1]], offset=offset[0][0:6], scale=scale[0][0:6])
-    #normalized_x_list_just_p2_feats, offset_just_p2, scale_just_p2 = normalize_x_list([x[:, 6:] for x in x_list[1]])
-    #normalized_x_list[1] = [np.hstack([x_just_p2, x_p2_both]) for x_just_p2, x_p2_both in zip(normalized_x_list_just_p2_feats, normalized_x_list_p2_feats_in_both)]
-    #offset[1] = np.concatenate([offset[1], offset_just_p2])
-    #scale[1] = np.concatenate([scale[1], scale_just_p2])
-    
+    # normalized_x_list[0], offset[0], scale[0] = normalize_x_list(x_list[0])
+    # normalized_x_list_p2_feats_in_both, offset[1], scale[1] = normalize_x_list([ x[:, 0:6] for x in x_list[1]], offset=offset[0][0:6], scale=scale[0][0:6])
+    # normalized_x_list_just_p2_feats, offset_just_p2, scale_just_p2 = normalize_x_list([x[:, 6:] for x in x_list[1]])
+    # normalized_x_list[1] = [np.hstack([x_just_p2, x_p2_both]) for x_just_p2, x_p2_both in zip(normalized_x_list_just_p2_feats, normalized_x_list_p2_feats_in_both)]
+    # offset[1] = np.concatenate([offset[1], offset_just_p2])
+    # scale[1] = np.concatenate([scale[1], scale_just_p2])
+
     p1_mean_feats_in_both = np.mean(np.concatenate(normalized_x_list[0]), axis=0)[0:6]
     p2_mean_feats_in_both = np.mean(np.concatenate(normalized_x_list[1]), axis=0)[0:6]
     shift = p1_mean_feats_in_both - p2_mean_feats_in_both
     for i, x in enumerate(normalized_x_list[1]):
         x[:, 0:6] = x[:, 0:6] + shift
         normalized_x_list[1][i][:, 0:6] = x[:, 0:6]
-    #normalized_x_list[1] = [x[np.where(x >= 0)[0], :][np.where(x <=1), :] for x in normalized_x_list[1]]
+    # normalized_x_list[1] = [x[np.where(x >= 0)[0], :][np.where(x <=1), :] for x in normalized_x_list[1]]
     normalized_x_list = list(map(list, zip(*normalized_x_list)))
     return normalized_x_list, offset, scale
 
@@ -309,6 +310,8 @@ def normalize_nested_tree_both_panels(nested_tree, offset, scale, feature2id):
 
     return [gate, [normalize_nested_tree_both_panels(child, offset, scale, feature2id)
                    for child in nested_tree[1]]]
+
+
 def normalize_nested_tree(nested_tree, offset, scale, feature2id):
     """
     normalized_x = (x - offset) / scale

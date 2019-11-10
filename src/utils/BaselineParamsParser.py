@@ -1,6 +1,8 @@
 import yaml
 
 DEFAULT_HPARAMS = {}
+
+
 class BaselineParamsParser:
     def __init__(self, path_to_params):
         self.path_to_params = path_to_params
@@ -11,4 +13,3 @@ class BaselineParamsParser:
             params_from_file = yaml.safe_load(f)
         self.hparams.update(params_from_file)
         return self.hparams
-
