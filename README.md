@@ -4,19 +4,13 @@ This repository contains an implementation of the disciminative automated gating
 [Machine Learning of Discriminative Gate Locations for Clinical Diagnosis](https://onlinelibrary.wiley.com/doi/full/10.1002/cyto.a.23906)
 (Disi Ji, Preston Putzel, Yu Qian, Ivan Chang, Aishwarya Mandava, Richard H. Scheuermann, Jack D. Bui, Huan‐You Wang and Padhraic Smyth)
 
-<p align="center">
-  <img src="figures/gate_plots_with_best_params.pdf" alt="gates" width="512"/>
-</p>
+![Model View Controller](figures/gate_plots_with_best_params.pdf)
 
 ## Dependencies
-
-* matplotlib $\geq$ 3.0.3
-* pandas $\geq$ 0.25.1 
-* ytorch $\geq$ 3.7 
-* pyyaml $\geq$ 5.1.2
-* sklearn $\geq$ 0.21.1
-* scipy $\geq$ 1.2.1 
-* seaborn $\geq$ 0.9.0 (only needed for synthetic data plotting code)
+To install dependencies in `requirements.txt`:
+```
+pip3 install -r requirements.txt
+```
 
 
 ## How to run the code
@@ -60,8 +54,7 @@ _"Machine Learning of Discriminative Gate Locations for Clinical Diagnosis"_ ([P
 
 ## License and Contact
 
-This work is released under the [MIT License](LICENSE).
-
+This work is released under the MIT License.
 Please submit an [issue](https://github.com/disiji/fc_differentiable/issues/new) to report bugs or request changes. 
 Contact **Disi Ji** [:envelope:](mailto:disij@uci.edu) for any questions or comments. 
 
