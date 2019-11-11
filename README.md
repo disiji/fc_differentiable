@@ -4,7 +4,13 @@ This repository contains an implementation of the disciminative automated gating
 [Machine Learning of Discriminative Gate Locations for Clinical Diagnosis](https://onlinelibrary.wiley.com/doi/full/10.1002/cyto.a.23906)
 (Disi Ji, Preston Putzel, Yu Qian, Ivan Chang, Aishwarya Mandava, Richard H. Scheuermann, Jack D. Bui, Huan‐You Wang and Padhraic Smyth)
 
-![Model View Controller](figures/gate_plots_with_best_params.pdf)
+<!--<p align="center">-->
+  <!--<img src="figures/gate_plots_with_best_params.png" width="700" title="hover text">-->
+<!--</p>-->
+
+<p align="center">
+  <img src="figures/testing_notation_plot.png" width="350" title="hover text">
+</p>
 
 ## Dependencies
 To install dependencies in `requirements.txt`:
