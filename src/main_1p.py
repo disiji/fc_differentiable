@@ -1,5 +1,6 @@
 import csv
 import warnings
+import yaml
 
 from full_output_for_CV import *
 from train import *
@@ -74,7 +75,8 @@ DEV_DATA_PATHS = {
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
     warnings.filterwarnings("ignore")
-    torch.cuda.set_device(hparams['device'])
+    if torch.cuda.is_available():
+        torch.cuda.set_device(hparams['device'])
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -220,7 +222,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
 
 if __name__ == '__main__':
-    yaml_filename = '../configs/default_1p.yaml'
+    yaml_filename = '../configs/throwaway_testing_mains_1p.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
