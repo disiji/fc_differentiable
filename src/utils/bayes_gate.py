@@ -659,7 +659,7 @@ class ModelTree(nn.Module):
         tensor = torch.tensor((), dtype=torch.float32)
         leaf_probs = tensor.new_zeros((len(x), self.n_sample_features))
         if torch.cuda.is_available():
-            leaf_probs.cuda(DEVICE)
+            leaf_probs = leaf_probs.cuda(DEVICE)
 
         leaf_idx = 0
         for sample_idx in range(len(x)):
@@ -683,7 +683,7 @@ class ModelTree(nn.Module):
             output['leaf_probs'] = torch.tensor(self.get_hard_proportions_4chain(x)[:, np.newaxis],
                                                 dtype=torch.float32)
             if torch.cuda.is_available():
-                output['leaf_probs'].cuda(DEVICE)
+                output['leaf_probs'] = output['leaf_probs'].cuda(DEVICE)
             output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
         else:
             output['leaf_probs'] = leaf_probs
@@ -748,8 +748,7 @@ class ModelTree(nn.Module):
         tensor = torch.tensor((), dtype=torch.float32)
         leaf_probs = tensor.new_zeros((len(x), self.n_sample_features))
         if torch.cuda.is_available():
-            leaf_probs.cuda(device)
-
+            leaf_probs = leaf_probs.cuda(device)
         for sample_idx in range(len(x)):
 
             this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)))]
@@ -780,7 +779,7 @@ class ModelTree(nn.Module):
         if use_hard_proportions:
             output['leaf_probs'] = torch.tensor(self.get_hard_proportions(x)[:, np.newaxis], dtype=torch.float32)
             if torch.cuda.is_available():
-                output['leaf_probs'].cuda(device)
+                output['leaf_probs'] = output['leaf_probs'].cuda(device)
             output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
         else:
             output['leaf_probs'] = leaf_probs
@@ -1042,7 +1041,7 @@ class ModelTreeBothPanels(ModelTree):
         tensor = torch.tensor((), dtype=torch.float32)
         leaf_probs = tensor.new_zeros((len(x), self.n_sample_features))
         if torch.cuda.is_available():
-            leaf_probs.cuda(device)
+            leaf_probs = leaf_probs.cuda(device)
         for sample_idx in range(len(x)):
             # this_level = [(self.root, torch.zeros((x[sample_idx][0].shape[0], x[sample_idx][1].shape[0])))]
             if torch.cuda.is_available():
@@ -1077,7 +1076,7 @@ class ModelTreeBothPanels(ModelTree):
         if use_hard_proportions:
             output['leaf_probs'] = torch.tensor(self.get_hard_proportions(x)[:, np.newaxis], dtype=torch.float32)
             if torch.cuda.is_available():
-                output['leaf_probs'].cuda(device)
+                output['leaf_probs'] = output['leaf_probs'].cuda(device)
             output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
         else:
             output['leaf_probs'] = leaf_probs

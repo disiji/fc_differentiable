@@ -24,17 +24,17 @@ default_hparams = {
     'dafi_init': False,
     'optimizer': "Adam",  # or Adam, SGD
     'loss_type': 'logistic',  # or MSE
-    'n_epoch_eval': 100,
+    'n_epoch_eval': 40,
     'n_mini_batch_update_gates': 50,
     'learning_rate_classifier': 0.05,
     'learning_rate_gates': 0.05,
     'batch_size': 10,
-    'n_epoch': 1000,
-    'seven_epochs_for_gate_motion_plot': [0, 50, 100, 200, 300, 400, 500],
+    'n_epoch': 200,
+    'seven_epochs_for_gate_motion_plot': [0, 40, 80, 120, 140, 160, 200],
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
-    'n_run': 2,
+    'n_run': 1,
     'init_type': 'heuristic_init',
     'corner_init_deterministic_size': .75,
     'train_alternate': False,
@@ -172,7 +172,6 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                                                     model_checkpoint=model_checkpoint)
             cll_1p_full_input.filter_samples_with_large_uncertainty(model_tree_filter)
 
-        print('Training model with just the tr split of validation data')
         model_tree, train_tracker_m, eval_tracker_m, run_time, model_checkpoint_dict = \
             run_train_full_batch_logreg_to_conv(hparams, cll_1p_full_input, model_tree,
                                                 model_checkpoint=model_checkpoint)
@@ -222,7 +221,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
 
 if __name__ == '__main__':
-    yaml_filename = '../configs/throwaway_testing_mains_1p.yaml'
+    yaml_filename = '../configs/default_1p.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
