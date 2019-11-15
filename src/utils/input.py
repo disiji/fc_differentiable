@@ -69,7 +69,6 @@ class Cll4d1pInput(CLLInputBase):
             self.y = self.y.cuda()
 
     def _load_data_(self, hparams):
-        # DATA_DIR = '../data/cll/'
         X_DATA_PATH = hparams['data']['features_path']
         Y_DATA_PATH = hparams['data']['labels_path']
         DATA_DIR = '../data/cll'
@@ -132,7 +131,6 @@ class Cll4d1pInput(CLLInputBase):
                         continue
                     while cur_cuts[i] < 0:
                         cur_cuts[i] = np.random.normal(gate[i], cut_var)
-                #                        print(cur_cuts[i], gate[i])
                 cuts_in_order = (cur_cuts[1] > cur_cuts[0]) if (
                             last_cut_to_sample == 3 or last_cut_to_sample == 2) else (cur_cuts[3] > cur_cuts[2])
                 num_iters_in_while += 1
@@ -199,7 +197,6 @@ class Cll4d1pInput(CLLInputBase):
 
     def _normalize_data_tr_and_nested_list(self):
         self.x_train, offset, scale = dh.normalize_x_list(self.x_train)
-        # print(self.feature2id, offset, scale, self.reference_nested_list)
         self.reference_nested_list = dh.normalize_nested_tree(self.reference_nested_list, offset, scale,
                                                               self.feature2id)
         if not (self.hparams['init_type'] == 'random_corner' or self.hparams['init_type'] == 'same_corners_as_DAFI' or
@@ -711,8 +708,6 @@ class Cll4d2pInput(CLLInputBase):
         CYTOMETRY_DIR_PB1 = DATA_DIR + "PB1_whole_mqian/"
         CYTOMETRY_DIR_PB2 = DATA_DIR + "PB2_whole_mqian/"
         DIAGONOSIS_FILENAME = DATA_DIR + 'PB.txt'
-        # self.x_list = [[x_pb1_idx, x_pb2_idx] for idx in range(n_samples)] # x_pb1_idx, x_pb2_idx are numpy arrays
-        # self.y_list = [y_idx for idx in range(n_samples)]
         if self.hparams['load_from_pickle']:
             with open(DATA_DIR + "filtered_4d_2p_x_list.pkl", 'rb') as f:
                 self.x_list = pickle.load(f)

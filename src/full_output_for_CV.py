@@ -236,6 +236,7 @@ def save_model_and_dafi(model, dafi_model, experiment_name):
 def run_write_full_output_for_CV(model, dafi_model, input, trackers_dict, hparams, model_checkpoint_dict,
                                  device_data=1):
     experiment_name = hparams['experiment_name']
+    save_model_and_dafi(model, dafi_model, experiment_name)
     write_probs_for_tr_te_for_model_dafi(model, dafi_model, input, experiment_name)
 
     write_model_diagnostics(
@@ -257,7 +258,6 @@ def run_write_full_output_for_CV(model, dafi_model, input, trackers_dict, hparam
 
     write_kendalls_tau_and_wilcoxon(model, dafi_model, input, experiment_name)
 
-    save_model_and_dafi(model, dafi_model, experiment_name)
 
     # ouput dictionary for my plotting code
     output = {}

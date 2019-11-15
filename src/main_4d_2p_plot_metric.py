@@ -84,7 +84,7 @@ def run_multiple_panel(yaml_filename, random_state_start=0, model_checkpoint=Tru
 if __name__ == '__main__':
 
     yaml_filename = "../configs/cll_4d_2p_metric_plot.yaml"
-    # run_multiple_panel(yaml_filename, 10, True)
+    run_multiple_panel(yaml_filename, 10, True)
 
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:

@@ -12,8 +12,8 @@ from sklearn.model_selection import KFold
 
 from result_analysis import make_and_write_catted_data
 from utils.BaselineParamsParser import BaselineParamsParser
-from utils.Flowsom import Flowsom
-from utils.KMeans import KMeans
+from baselines.Flowsom import Flowsom
+from baselines.KMeans import KMeans
 from utils.input import Cll8d1pInput
 
 SEEDS = np.concatenate([np.arange(51, 72), np.arange(29) + 1], axis=0)
@@ -80,7 +80,7 @@ def baseline_plot_main(hparams_for_input, path_to_model_params):
     start = time.time()
     parser = BaselineParamsParser(path_to_model_params)
     model_params = parser.parse_params()
-
+    print(hparams)
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -91,9 +91,7 @@ def baseline_plot_main(hparams_for_input, path_to_model_params):
     random_state = 1  # to match the seed used for the model cv runs
     np.random.seed(random_state)
     torch.manual_seed(random_state)
-    # folds = KFold(n_splits=hparams['n_folds_for_cluster_CV'])
-    # avgs_fs = []
-    # avgs_km = []
+
 
     tr_accs_fs = []
     tr_accs_km = []
@@ -109,17 +107,10 @@ def baseline_plot_main(hparams_for_input, path_to_model_params):
         default_exp_name_for_outer_loop = default_exp_name + '_num_clusters=%d' % (num_clusters)
 
         cll_1p_full_input = Cll8d1pInput(hparams, random_state=random_state)
-        # avg_te_acc_fs_cur = 0
-        # avg_te_acc_km_cur = 0
-        # best_acc_fs = 0
-        # best_acc_km = 0
-        # best_k_km = -1
-        # best_k_fs = -1
 
-        # for fold_idx, (tr_idxs, te_idxs) in enumerate(folds.split(input_no_split.x_list)):
         start_time = time.time()
         hparams['experiment_name'] = default_exp_name_for_outer_loop
-        #        hparams['experiment_name'] = default_exp_name_for_outer_loop + '_fold%d' %fold_idx
+
         if not os.path.exists('../output/%s' % hparams['experiment_name']):
             os.makedirs('../output/%s' % hparams['experiment_name'])
         savedir = '../output/%s/' % hparams['experiment_name']
@@ -134,8 +125,7 @@ def baseline_plot_main(hparams_for_input, path_to_model_params):
             model_params['flowsom_params'],
             model_params['columns_to_cluster']
         )
-        # if IGNORE_KMEANS:
-        #    model_params['kmeans_params']['num_clusters'] = 2
+
         model_kmeans = \
             KMeans(
                 './temp_catted_data_for_flowsom.csv',
@@ -154,9 +144,7 @@ def baseline_plot_main(hparams_for_input, path_to_model_params):
         preds_flowsom, eval_acc_flowsom = get_preds_and_eval_acc(model_flowsom, 'flowsom', x_eval_for_flowsom, y_eval)
         print('eval for kmeans:')
         preds_kmeans, eval_acc_kmeans = get_preds_and_eval_acc(model_kmeans, 'kmeans', x_eval, y_eval)
-        # avg_te_acc_fs_cur += eval_acc_flowsom
-        # avg_te_acc_km_cur += eval_acc_kmeans
-        # print('time for fold %d: %d' %(fold_idx, time.time() - start_time))
+
         tr_accs_km.append(tr_acc_kmeans)
         tr_accs_fs.append(tr_acc_flowsom)
 
@@ -174,21 +162,6 @@ def baseline_plot_main(hparams_for_input, path_to_model_params):
     np.savetxt('../output/flowsom_eval_accs_for_plot.csv', eval_accs_fs, delimiter=',')
 
 
-# avg_te_acc_fs_cur = avg_te_acc_fs_cur/hparams['n_folds_for_cluster_CV']
-# avg_te_acc_km_cur = avg_te_acc_km_cur/hparams['n_folds_for_cluster_CV']
-# avgs_fs.append(avg_te_acc_fs_cur)
-# avgs_km.append(avg_te_acc_km_cur)
-# if avg_te_acc_fs_cur > best_acc_fs:
-#     best_acc_fs = avg_te_acc_fs_cur
-#     best_k_fs = num_clusters
-# if avg_te_acc_km_cur > best_acc_km:
-#     best_acc_km = avg_te_acc_km_cur
-#     best_k_km = num_clusters
-# print('Current best k for flowsom: %d with best avg acc: %.4f' %(best_k_fs, best_acc_fs))
-# print('Current best k for kmeans: %d with best avg acc: %.4f' %(best_k_km, best_acc_km))
-# print('logreg penalty is %.4f for flowsom, num clusters is %d' %(l1_penalty, num_clusters))
-# print('avgs flowsom', avgs_fs)
-# print('avgs kmeans', avgs_km)
 
 def CV_dev_main(hparams_for_input, path_to_model_params, ignore_kmeans=False):
     start = time.time()
@@ -312,19 +285,6 @@ def runs_50_main(hparams_for_input, path_to_model_params):
         save_files_for_flowsom(input_aug, './temp_catted_data_aug', model_params['flowsom_params']['num_to_subsample'],
                                random_seed)
 
-        # abstract the following into a factory to make
-        # cleaner
-        #        if params['clustering_type'] == 'flowsom':
-        #   model_flowsom = Flowsom(
-        #               './temp_catted_data_for_flowsom.csv',
-        #               model_params['flowsom_params'],
-        #               model_params['columns_to_cluster']
-        #       )
-        #   model_flowsom_aug = Flowsom(
-        #               './temp_catted_data_aug_for_flowsom.csv',
-        #               model_params['flowsom_params'],
-        #               model_params['columns_to_cluster']
-        #       )
         model_kmeans1 = \
             KMeans(
                 './temp_catted_data.csv',
@@ -350,10 +310,7 @@ def runs_50_main(hparams_for_input, path_to_model_params):
                 model_params['kmeans_params']['model2'],
                 random_state=random_seed
             )
-        # else:
-        #    raise ValueError('Model type not recognized')
-        # tr_acc_flowsom = fit_model_and_get_tr_acc(model_flowsom, 'flowsom')
-        # tr_acc_flowsom_aug = fit_model_and_get_tr_acc(model_flowsom_aug, 'flowsom aug')
+
         tr_acc_kmeans1 = fit_model_and_get_tr_acc(model_kmeans1, 'kmeans')
         tr_acc_kmeans1_aug = fit_model_and_get_tr_acc(model_kmeans1_aug, 'kmeans aug')
         tr_acc_kmeans2 = fit_model_and_get_tr_acc(model_kmeans2, 'kmeans')
@@ -367,8 +324,6 @@ def runs_50_main(hparams_for_input, path_to_model_params):
         x_eval = [x.cpu().detach().numpy() for x in input.x_eval]
         y_eval = input.y_eval.cpu().detach().numpy()
 
-        # preds_flowsom, eval_acc_flowsom = get_preds_and_eval_acc(model_flowsom, 'flowsom', x_eval, y_eval)
-        # preds_flowsom_aug, eval_acc_flowsom_aug = get_preds_and_eval_acc(model_flowsom_aug, 'flowsom aug', x_eval, y_eval)
         preds_kmeans1, eval_acc_kmeans1 = get_preds_and_eval_acc(model_kmeans1, 'kmeans1', x_eval, y_eval)
         preds_kmeans1_aug, eval_acc_kmeans1_aug = get_preds_and_eval_acc(model_kmeans1_aug, 'kmeans1 aug', x_eval,
                                                                          y_eval)
@@ -377,14 +332,8 @@ def runs_50_main(hparams_for_input, path_to_model_params):
                                                                          y_eval)
 
         clean_up_temp_files('./temp_catted_data', random_seed)
-        #  model_dict = {
-        #      'fs': model_flowsom,
-        #      'fs_aug': model_flowsom_aug,
-        #      'km': model_kmeans,
-        #      'km_aug': model_kmeans_aug
-        #  }
 
-        # not running flowsom for cv runs, so put same output from
+        # not running flowsom for cv runs (since it always did poorly on dev), so put same output from
         # kmeans here in order to reuse code written for both
         # produced flowsom columns will be meaningless!
         preds_and_acc_dict = {
@@ -503,42 +452,18 @@ def save_files_for_flowsom(input, saveprefix, num_to_subsample, random_seed):
     df_subsampled.to_csv(saveprefix + '_for_flowsom.csv', index=False)
 
 
-# def main(path_to_params):
-#    parser = baselineParamsParser(path_to_params)
-#    params = parser.get_params()
-#    model = BaselineModelFactory.create_model(params['model_params'])
-#    data_loader = BaselineDataLoaderFactory.create_data_loader(
-#                        params['data_loading_params'], type(model)
-#    )
-#    model.fit(data_loader.training_data)
-#    diagnostics = BaselineDiagnostics(
-#                    model, 
-#                    data_loader.training_data,
-#                    data_loader.test_data,
-#                    hparams['diagnostic_params']
-#    )
-#    diagnostics.write_diagnostics(model)
-#    diagnostics.write_visualizations(model)
 
 
 if __name__ == '__main__':
-    # path_to_model_params = '../configs/testing_kmeans.yaml'
-    # use for CV runs with the two kmeans models selected from grid search
-    # path_to_model_params = '../configs/CV_kmeans_two_models.yaml'
-    # path_to_hparams_for_input = '../configs/CV_runs.yaml'
-
-    # use these two for grid search on dev data
-    #    path_to_model_params = '../configs/grid_search_baseline.yaml'
-    #    path_to_hparams_for_input = '../configs/Reg_CV_device1.yaml'
-
-    # use these two for baseline plots
-    path_to_model_params = '../configs/default_baseline.yaml'
-    path_to_hparams_for_input = '../configs/default_baseline_model.yaml'
+    path_to_model_params = '../configs/default_baseline_model.yaml'
+    path_to_hparams_for_input = '../configs/default_baseline.yaml'
 
     hparams = default_hparams
     with open(path_to_hparams_for_input, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
+
+    # Uncomment which of the following mains to run
 
     # CV_dev_main(hparams, path_to_model_params)
 

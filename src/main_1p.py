@@ -4,7 +4,6 @@ import yaml
 
 from full_output_for_CV import *
 from train import *
-# from utils.utils_plot import plot_pos_and_neg_gate_motion
 from utils.utils_plot import *
 
 default_hparams = {
