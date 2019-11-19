@@ -25,7 +25,7 @@ producing classification results on par with those generated via human expertise
 in terms of both thepositions of the gating boundaries and the diagnostic accuracy.
 
 To reproduce the results reported in the paper, 
-we provide default configuration files which should run out of the box. 
+we provide default configuration files which should run out of the box on the synthetic data. (To use the same CLLdata we use in the paper please download the data here: INSERT LINK HERE, and then put the data in the data directory.) 
 To do so navigate to the src directory and run the desired main. 
 
 To use non-default experiment configurations, 
