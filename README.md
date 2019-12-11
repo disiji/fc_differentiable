@@ -25,18 +25,21 @@ producing classification results on par with those generated via human expertise
 in terms of both thepositions of the gating boundaries and the diagnostic accuracy.
 
 To run our code:
+
 1. Download the data from the following links:
     * [Panel1 data](https://flowrepository.org/id/FR-FCM-Z27S)
     * [Panel2 data](https://flowrepository.org/id/FR-FCM-Z27T)
-2. Create a cll directory in the data directory
-3. Move the data folders from step one into the cll directory
+2. Create a directory labelled cll inside of the data directory
+3. Move the data folders from step one into the cll directory from step 2.
 4. To use non-default settings for an experiment, modify the config file with the matching name as the main you would like to run, otherwise just run the desired main from the command line while in the src directory..
 
 
 For example to run experiments using only one panel with default settings follow steps 1-3, navigate to the src directory and enter:
-'''
+
+```
 python main_1p.py
-'''
+```
+
 To use non-default settings for the panel one experiments, modify the default_1p.yaml file (a list of options for each experiment is at the top of each main file).
 
 ## Authors
