@@ -96,7 +96,6 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
             os.mkdir(savedir)
         np.random.seed(random_state)
         torch.manual_seed(random_state)
-        print(random_state, random_state_start, hparams['n_run'])
         cll_1p_full_input = Cll8d1pInput(hparams, random_state=random_state)
         if hparams['augment_training_with_dev_data']:
             cll_1p_full_input_augmented = Cll8d1pInput(hparams, random_state=random_state,

@@ -95,7 +95,6 @@ def run_both_panels(hparams, random_state_start=0, model_checkpoint=True):
     default_exp_name = hparams['experiment_name']
     last_y_label = []
     iterate_over = range(random_state_start, hparams['n_run']) if not hparams['use_model_CV_seeds'] else SEEDS
-    print(iterate_over)
     for random_state in iterate_over:
         print('Seed %d' % random_state)
         start_time = time.time()
