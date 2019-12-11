@@ -24,13 +24,18 @@ We evaluate the proposed approach using both simulated and real data,
 producing classification results on par with those generated via human expertise, 
 in terms of both thepositions of the gating boundaries and the diagnostic accuracy.
 
-To reproduce the results reported in the paper, 
-we provide default configuration files which should run out of the box on the synthetic data. (To use the same CLLdata we use in the paper please download the data here: INSERT LINK HERE, and then put the data in the data directory.) 
-To do so navigate to the src directory and run the desired main. 
+To run our code:
+1. Download the data from the following link:
+2. Create a cll directory in the data directory
+3. Move the data folders into the cll directory
+4. Modify the config file with the same name as the main
+5. Run the desired main from the command line
+
+Example
 
 To use non-default experiment configurations, 
 modify the correspondig default config file found in the configs folder, 
-and change the path_to_yaml variable at the end of each main to match the modified config file. 
+and change the path_to_yaml variable at the end of each main to match the modified config file.  
 
 For example to run model X with Y settings, 
 modify Z config file and run the following from the src directory:

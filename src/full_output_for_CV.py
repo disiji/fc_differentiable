@@ -1,6 +1,6 @@
 import os
 import pickle
-
+import torch
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import kendalltau
@@ -69,8 +69,8 @@ def from_gpu_to_numpy(gpu_tensor):
 
 def get_diagnostics_init_final(model, data, labels, tracker):
     diagnostics = {}
-
-    tracker.model_init = tracker.model_init.cuda()
+    if torch.cuda.is_available():
+        tracker.model_init = tracker.model_init.cuda()
     output_i = tracker.model_init(data, labels)
     pos_leaf_probs_i = [from_gpu_to_numpy(out) for o, out in enumerate(output_i['leaf_probs']) if labels[o] == 1.]
     neg_leaf_probs_i = [from_gpu_to_numpy(out) for o, out in enumerate(output_i['leaf_probs']) if labels[o] == 0.]

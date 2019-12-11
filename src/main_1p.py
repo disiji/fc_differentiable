@@ -5,6 +5,7 @@ import yaml
 from full_output_for_CV import *
 from train import *
 from utils.utils_plot import *
+from utils.load_and_split_data import *
 
 default_hparams = {
     'logistic_k': 100,
@@ -95,6 +96,7 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
             os.mkdir(savedir)
         np.random.seed(random_state)
         torch.manual_seed(random_state)
+        print(random_state, random_state_start, hparams['n_run'])
         cll_1p_full_input = Cll8d1pInput(hparams, random_state=random_state)
         if hparams['augment_training_with_dev_data']:
             cll_1p_full_input_augmented = Cll8d1pInput(hparams, random_state=random_state,
@@ -220,10 +222,26 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
 
 if __name__ == '__main__':
+    # Load yaml files
     yaml_filename = '../configs/default_1p.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
     print(hparams)
+    
+    # Now load and split data if it isn't already
+    # FILL IN WITH CORRECT PATHS
+    panel1_data_dir = '../data/cll/PB1'
+    panel2_data_dir = '../data/cll/PB2'
+
+    # Save paths for the preprocessed/split data
+    # do NOT modify these paths.
+    save_path = '../data/cll/panel1/'
+    save_path_both_panels = '../data/cll/both_panels/'
+    # If data hasn't already been made, then make it
+    if not os.path.exists(os.path.join(save_path, 'x_dev_8d_1p.pkl')):
+        save_and_preprocess_data_fcs(panel1_data_dir, panel2_data_dir, save_path, save_path_both_panels)
+
+    # Now run the main
     run_single_panel(hparams, 0, True)

@@ -5,6 +5,7 @@ from train import *
 import yaml
 from utils.bayes_gate import ModelTreeBothPanels
 from utils.utils_plot import *
+from utils.load_and_split_data import *
 
 #random seed settings for use with multiple restarts
 SEEDS = np.concatenate([np.arange(51, 72), np.arange(29) + 1], axis=0)
@@ -83,7 +84,8 @@ DEV_DATA_PATHS = {
 
 def run_both_panels(hparams, random_state_start=0, model_checkpoint=True):
     warnings.filterwarnings("ignore")
-    torch.cuda.set_device(hparams['device'])
+    if torch.cuda.is_available():
+        torch.cuda.set_device(hparams['device'])
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -152,4 +154,20 @@ if __name__ == '__main__':
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
     print(hparams)
+
+
+    # Now load and split data if it isn't already
+    # FILL IN WITH CORRECT PATHS
+    panel1_data_dir = '../data/cll/PB1'
+    panel2_data_dir = '../data/cll/PB2'
+
+    # Save paths for the preprocessed/split data
+    # do NOT modify these paths.
+    save_path = '../data/cll/panel1/'
+    save_path_both_panels = '../data/cll/both_panels/'
+    # If data hasn't already been made, then make it
+    if not os.path.exists(os.path.join(save_path, 'x_dev_8d_1p.pkl')):
+        save_and_preprocess_data_fcs(panel1_data_dir, panel2_data_dir, save_path, save_path_both_panels)
+
+    # Now run the main
     run_both_panels(hparams, 0, True)

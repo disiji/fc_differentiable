@@ -5,7 +5,7 @@ import pickle
 
 import numpy as np
 import pandas as pd
-
+import fcsparser
 
 def load_cll_data_1p(diagnosis_filename, cytometry_dir, features):
     X, y = [], []
@@ -20,6 +20,24 @@ def load_cll_data_1p(diagnosis_filename, cytometry_dir, features):
     y = [d[_] for _ in y]
     return X, y
 
+def load_cll_data_1p_fcs(diagnosis_filename, cytometry_dir, features):
+    X, y = [], []
+    diagnosis_df = pd.read_csv(diagnosis_filename, sep='\t')
+    for filename in sorted(os.listdir(cytometry_dir)):
+        if os.path.isdir(os.path.join(cytometry_dir, filename)):
+            continue
+
+        # filter out PB1 samples that we do not have diagnosis information about
+        file_path = os.path.join(cytometry_dir, filename)
+        if filename in diagnosis_df['FileName'].values:
+            meta_data, file_df = fcsparser.parse(file_path, meta_data_only=False, reformat_meta=True)
+            print(list(file_df))
+            X.append(file_df[features].values)
+            y.append(diagnosis_df.loc[diagnosis_df['FileName'] == filename]['Diagnosis'].values[0])
+    d = {'no': 0, 'yes': 1}
+    y = [d[_] for _ in y]
+    print(y)
+    return X, y
 
 def load_cll_data_2p(diagnosis_filename, cytometry_dir_pb1, cytometry_dir_pb2, features_pb1, features_pb2):
     X, y = [], []
@@ -38,6 +56,31 @@ def load_cll_data_2p(diagnosis_filename, cytometry_dir_pb1, cytometry_dir_pb2, f
     y = [d[_] for _ in y]
     return X, y
 
+def load_cll_data_2p_fcs(diagnosis_filename, cytometry_dir_pb1, cytometry_dir_pb2, features_pb1, features_pb2):
+    X, y = [], []
+    diagnosis_df = pd.read_csv(diagnosis_filename, sep='\t')
+    #sample_id_list_pb2 = [int(filename.split('.')[0]) for filename in sorted(os.listdir(cytometry_dir_pb2))]
+    sample_id_list_pb2 = [filename for filename in sorted(os.listdir(cytometry_dir_pb2))]
+    id2filename_pb2 = dict(zip(sample_id_list_pb2, sorted(os.listdir(cytometry_dir_pb2))))
+    for filename_pb1 in sorted(os.listdir(cytometry_dir_pb1)):
+        #sample_id = int(filename_pb1.split('.')[0])
+        sample_id = filename_pb1
+        if os.path.isdir(os.path.join(cytometry_dir_pb1, filename_pb1)):
+            continue
+        if sample_id in diagnosis_df['FileName'].values and sample_id in sample_id_list_pb2:
+            filename_pb2 = id2filename_pb2[sample_id]
+            filepath_pb1 = os.path.join(cytometry_dir_pb1, filename_pb1)
+            filepath_pb2 = os.path.join(cytometry_dir_pb2, filename_pb2)
+            meta_data, file_df_pb1 = fcsparser.parse(filepath_pb1, meta_data_only=False, reformat_meta=True)
+            meta_data, file_df_pb2 = fcsparser.parse(filepath_pb2, meta_data_only=False, reformat_meta=True)
+            print(list(file_df_pb2))
+            x_pb1 = file_df_pb1[features_pb1].values
+            x_pb2 = file_df_pb2[features_pb2].values
+            X.append([x_pb1, x_pb2])
+            y.append(diagnosis_df.loc[diagnosis_df['FileName'] == sample_id]['Diagnosis'].values[0])
+    d = {'no': 0, 'yes': 1}
+    y = [d[_] for _ in y]
+    return X, y
 
 def get_reference_tree(file):
     """

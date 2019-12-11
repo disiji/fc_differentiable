@@ -4,5 +4,7 @@ experiment_name: 'default_p1'
 device: 1
 
 data:
-    features_path: '../data/cll/8d_FINAL/x_all_8d_1p.pkl'
-    labels_path: '../data/cll/8d_FINAL/y_all_8d_1p.pkl'
+    features_path: '../data/cll/panel1/x_all_8d_1p.pkl'
+    labels_path: '../data/cll/panel1/y_all_8d_1p.pkl'
+
+n_run: 5
