@@ -1,10 +1,11 @@
 import csv
 import warnings
+import yaml
 
 from full_output_for_CV import *
 from train import *
-# from utils.utils_plot import plot_pos_and_neg_gate_motion
 from utils.utils_plot import *
+from utils.load_and_split_data import *
 
 default_hparams = {
     'logistic_k': 100,
@@ -23,17 +24,17 @@ default_hparams = {
     'dafi_init': False,
     'optimizer': "Adam",  # or Adam, SGD
     'loss_type': 'logistic',  # or MSE
-    'n_epoch_eval': 100,
+    'n_epoch_eval': 40,
     'n_mini_batch_update_gates': 50,
     'learning_rate_classifier': 0.05,
     'learning_rate_gates': 0.05,
     'batch_size': 10,
-    'n_epoch': 1000,
-    'seven_epochs_for_gate_motion_plot': [0, 50, 100, 200, 300, 400, 500],
+    'n_epoch': 200,
+    'seven_epochs_for_gate_motion_plot': [0, 40, 80, 120, 140, 160, 200],
     'test_size': 0.20,
     'experiment_name': 'default',
     'random_state': 123,
-    'n_run': 2,
+    'n_run': 1,
     'init_type': 'heuristic_init',
     'corner_init_deterministic_size': .75,
     'train_alternate': False,
@@ -74,7 +75,8 @@ DEV_DATA_PATHS = {
 
 def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
     warnings.filterwarnings("ignore")
-    torch.cuda.set_device(hparams['device'])
+    if torch.cuda.is_available():
+        torch.cuda.set_device(hparams['device'])
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -170,7 +172,6 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
                                                     model_checkpoint=model_checkpoint)
             cll_1p_full_input.filter_samples_with_large_uncertainty(model_tree_filter)
 
-        print('Training model with just the tr split of validation data')
         model_tree, train_tracker_m, eval_tracker_m, run_time, model_checkpoint_dict = \
             run_train_full_batch_logreg_to_conv(hparams, cll_1p_full_input, model_tree,
                                                 model_checkpoint=model_checkpoint)
@@ -220,10 +221,26 @@ def run_single_panel(hparams, random_state_start=0, model_checkpoint=True):
 
 
 if __name__ == '__main__':
+    # Load yaml files
     yaml_filename = '../configs/default_1p.yaml'
     hparams = default_hparams
     with open(yaml_filename, "r") as f_in:
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
     print(hparams)
+    
+    # Now load and split data if it isn't already
+    # FILL IN WITH CORRECT PATHS
+    panel1_data_dir = '../data/cll/PB1'
+    panel2_data_dir = '../data/cll/PB2'
+
+    # Save paths for the preprocessed/split data
+    # do NOT modify these paths.
+    save_path = '../data/cll/panel1/'
+    save_path_both_panels = '../data/cll/both_panels/'
+    # If data hasn't already been made, then make it
+    if not os.path.exists(os.path.join(save_path, 'x_dev_8d_1p.pkl')):
+        save_and_preprocess_data_fcs(panel1_data_dir, panel2_data_dir, save_path, save_path_both_panels)
+
+    # Now run the main
     run_single_panel(hparams, 0, True)

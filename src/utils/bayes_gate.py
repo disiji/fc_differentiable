@@ -101,7 +101,7 @@ class ModelNode(nn.Module):
         :param logistic_k:
         :param reference_tree:
         """
-        # variables for gates]
+        # variables for gates
         super(ModelNode, self).__init__()
         self.logistic_k = logistic_k
         self.reference_tree = reference_tree
@@ -322,7 +322,6 @@ class SquareModelNode(ModelNode):
         gate_low1 = F.sigmoid(self.center1_param) - F.sigmoid(self.side_length_param) / 2.
         gate_upp2 = F.sigmoid(self.center2_param) + F.sigmoid(self.side_length_param) / 2.
         gate_low2 = F.sigmoid(self.center2_param) - F.sigmoid(self.side_length_param) / 2.
-        # gate_low1.register_hook(self.replace_nans_with_0)
 
         logp = F.logsigmoid(self.logistic_k * ((x[:, self.gate_dim1] - gate_low1))) \
                + F.logsigmoid(- self.logistic_k * ((x[:, self.gate_dim1] - gate_upp1))) \
@@ -598,13 +597,9 @@ class ModelTree(nn.Module):
                 child_init = init_tree.children[_]
                 child_node = self.add(child_ref, child_init)
                 child_list.append(child_node)
-        # str(id(node)) was old code
-        # but it doesn't allow easy saving and loading of the model
         self.children_dict.update({self.get_node_idx(node): child_list})
         return node
 
-    # Could add case here where an additional number is appended if 
-    # gates share the same dimensions
     def get_node_idx(self, node):
         node_gate = str(node.gate_dim1) + str(node.gate_dim2)
         return node_gate
@@ -641,7 +636,7 @@ class ModelTree(nn.Module):
 
         return [root, child1, child2, child3]
 
-    # only use if model is a chain of four nodes-this needs to be refactored into a new object probably
+    # only use if model is a chain of four nodes
     def forward_4chain(self, x, y=None, detach_logistic_params=False, use_hard_proportions=False, device=0):
         output = {'leaf_probs': None,
                   'leaf_logp': None,
@@ -657,9 +652,9 @@ class ModelTree(nn.Module):
 
         DEVICE = device
         tensor = torch.tensor((), dtype=torch.float32)
-        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features)).cuda(DEVICE)
+        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features))
         if torch.cuda.is_available():
-            leaf_probs.cuda(DEVICE)
+            leaf_probs = leaf_probs.cuda(DEVICE)
 
         leaf_idx = 0
         for sample_idx in range(len(x)):
@@ -681,7 +676,9 @@ class ModelTree(nn.Module):
         loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss'] + output['init_reg_loss']
         if use_hard_proportions:
             output['leaf_probs'] = torch.tensor(self.get_hard_proportions_4chain(x)[:, np.newaxis],
-                                                dtype=torch.float32).cuda(DEVICE)
+                                                dtype=torch.float32)
+            if torch.cuda.is_available():
+                output['leaf_probs'] = output['leaf_probs'].cuda(DEVICE)
             output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
         else:
             output['leaf_probs'] = leaf_probs
@@ -744,10 +741,9 @@ class ModelTree(nn.Module):
                   }
 
         tensor = torch.tensor((), dtype=torch.float32)
-        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features)).cuda(device)
+        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features))
         if torch.cuda.is_available():
-            leaf_probs.cuda(device)
-
+            leaf_probs = leaf_probs.cuda(device)
         for sample_idx in range(len(x)):
 
             this_level = [(self.root, torch.zeros((x[sample_idx].shape[0],)))]
@@ -776,7 +772,9 @@ class ModelTree(nn.Module):
         loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss'] + output['init_reg_loss']
 
         if use_hard_proportions:
-            output['leaf_probs'] = torch.tensor(self.get_hard_proportions(x)[:, np.newaxis], dtype=torch.float32).cuda()
+            output['leaf_probs'] = torch.tensor(self.get_hard_proportions(x)[:, np.newaxis], dtype=torch.float32)
+            if torch.cuda.is_available():
+                output['leaf_probs'] = output['leaf_probs'].cuda(device)
             output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
         else:
             output['leaf_probs'] = leaf_probs
@@ -873,7 +871,6 @@ class ModelTreeBothPanels(ModelTree):
                 panel = self.get_panel(child_ref)
                 child_node = self.add(child_ref, child_init, panel=panel)
                 child_list.append(child_node)
-        # str(id(node)) was old code for saved models from CV results, see fix children dict function
         node_idx = self.get_node_idx(node)
         self.children_dict.update({str(node_idx): child_list})
         return node
@@ -1036,11 +1033,10 @@ class ModelTreeBothPanels(ModelTree):
                   }
 
         tensor = torch.tensor((), dtype=torch.float32)
-        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features)).cuda(device)
+        leaf_probs = tensor.new_zeros((len(x), self.n_sample_features))
         if torch.cuda.is_available():
-            leaf_probs.cuda(device)
+            leaf_probs = leaf_probs.cuda(device)
         for sample_idx in range(len(x)):
-            # this_level = [(self.root, torch.zeros((x[sample_idx][0].shape[0], x[sample_idx][1].shape[0])))]
             if torch.cuda.is_available():
                 this_level = [(self.root, [torch.zeros((x[sample_idx][0].shape[0],)).cuda(device),
                                            torch.zeros((x[sample_idx][1].shape[0],)).cuda(device)])]
@@ -1052,7 +1048,6 @@ class ModelTreeBothPanels(ModelTree):
                 next_level = list()
                 for (node, pathlogp) in this_level:
                     self.update_pathlogp(pathlogp, node, x[sample_idx])
-                    # pathlogp = pathlogp + logp
                     if len(self.children_dict[str(self.get_node_idx(node))]) > 0:
                         for child_node in self.children_dict[str(self.get_node_idx(node))]:
                             next_level.append((child_node, pathlogp))
@@ -1067,15 +1062,14 @@ class ModelTreeBothPanels(ModelTree):
                 this_level = next_level
 
         loss = output['ref_reg_loss'] + output['size_reg_loss'] + output['corner_reg_loss'] + output['init_reg_loss']
-        # self.register_nan_hook(output['size_reg_loss'], string='size reg')
-        # self.register_nan_hook(output['ref_reg_loss'], string='reference reg')
-        # self.register_nan_hook(output['init_reg_loss'], string='init_reg')
         if use_hard_proportions:
-            output['leaf_probs'] = torch.tensor(self.get_hard_proportions(x)[:, np.newaxis], dtype=torch.float32).cuda()
+            output['leaf_probs'] = torch.tensor(self.get_hard_proportions(x)[:, np.newaxis], dtype=torch.float32)
+            if torch.cuda.is_available():
+                output['leaf_probs'] = output['leaf_probs'].cuda(device)
             output['leaf_logp'] = torch.log(output['leaf_probs']).clamp(min=-1000)
         else:
             output['leaf_probs'] = leaf_probs
-            output['leaf_logp'] = torch.log(leaf_probs).clamp(min=-1000)  # Rob: This is weird...
+            output['leaf_logp'] = torch.log(leaf_probs).clamp(min=-1000) 
 
         if y is not None:
             pos_mean = 0.
@@ -1107,7 +1101,6 @@ class ModelTreeBothPanels(ModelTree):
                 elif self.loss_type == "MSE":
                     output['log_loss'] = self.criterion(output['y_pred'], y)
                 loss = loss + output['log_loss']
-            # add regularization on the number of cells fall into the leaf gate of negative samples;
         output['loss'] = loss
         return output
 

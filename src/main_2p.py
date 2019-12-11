@@ -2,13 +2,13 @@ import csv
 import warnings
 
 from train import *
+import yaml
 from utils.bayes_gate import ModelTreeBothPanels
-# from utils.utils_plot import plot_pos_and_neg_gate_motion
 from utils.utils_plot import *
+from utils.load_and_split_data import *
 
-# SEEDS = np.concatenate([np.arange(67, 72), np.arange(29) + 1, np.arange(51, 67)], axis=0)
-SEEDS = np.concatenate([np.arange(73, 74), np.arange(29) + 1, np.arange(51, 72)], axis=0)
-# SEEDS = np.concatenate([np.arange(51, 72), np.arange(29) + 1], axis=0)
+#random seed settings for use with multiple restarts
+SEEDS = np.concatenate([np.arange(51, 72), np.arange(29) + 1], axis=0)
 default_hparams = {
     'logistic_k': 100,
     'logistic_k_dafi': 10000,
@@ -76,6 +76,7 @@ DEV_DATA_PATHS = {
 }
 
 
+# For use with running on test data, modify to have holdout data location
 # OUT_OF_SAMPLE_TEST_DATA_PATHS = {
 #        'X': '../data/cll/8d_FINAL/x_test_1p.pkl',
 #        'Y': '../data/cll/8d_FINAL/y_test_1p.pkl'
@@ -83,7 +84,8 @@ DEV_DATA_PATHS = {
 
 def run_both_panels(hparams, random_state_start=0, model_checkpoint=True):
     warnings.filterwarnings("ignore")
-    torch.cuda.set_device(hparams['device'])
+    if torch.cuda.is_available():
+        torch.cuda.set_device(hparams['device'])
     if not os.path.exists('../output/%s' % hparams['experiment_name']):
         os.makedirs('../output/%s' % hparams['experiment_name'])
     with open('../output/%s/hparams.csv' % hparams['experiment_name'], 'w') as outfile:
@@ -93,7 +95,6 @@ def run_both_panels(hparams, random_state_start=0, model_checkpoint=True):
     default_exp_name = hparams['experiment_name']
     last_y_label = []
     iterate_over = range(random_state_start, hparams['n_run']) if not hparams['use_model_CV_seeds'] else SEEDS
-    print(iterate_over)
     for random_state in iterate_over:
         print('Seed %d' % random_state)
         start_time = time.time()
@@ -142,7 +143,6 @@ def run_both_panels(hparams, random_state_start=0, model_checkpoint=True):
         print(model_tree)
         print('Testing Accuracy Model: %.4f' % eval_tracker_m.acc[-1])
         print('Testing Accuracy Dafi:', eval_tracker_d.acc[-1])
-        # write_model_diagnostics(model_tree, dafi_tree, cll_both_panels_input, train_tracker_m, eval_tracker_m, train_tracker_d, eval_tracker_d, experiment_name)
         print('The full loop for random_state %d took %d seconds' % (random_state, time.time() - start_time))
 
 
@@ -153,4 +153,20 @@ if __name__ == '__main__':
         yaml_params = yaml.safe_load(f_in)
     hparams.update(yaml_params)
     print(hparams)
+
+
+    # Now load and split data if it isn't already
+    # FILL IN WITH CORRECT PATHS
+    panel1_data_dir = '../data/cll/PB1'
+    panel2_data_dir = '../data/cll/PB2'
+
+    # Save paths for the preprocessed/split data
+    # do NOT modify these paths.
+    save_path = '../data/cll/panel1/'
+    save_path_both_panels = '../data/cll/both_panels/'
+    # If data hasn't already been made, then make it
+    if not os.path.exists(os.path.join(save_path, 'x_dev_8d_1p.pkl')):
+        save_and_preprocess_data_fcs(panel1_data_dir, panel2_data_dir, save_path, save_path_both_panels)
+
+    # Now run the main
     run_both_panels(hparams, 0, True)

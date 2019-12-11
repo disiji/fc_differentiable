@@ -24,20 +24,23 @@ We evaluate the proposed approach using both simulated and real data,
 producing classification results on par with those generated via human expertise, 
 in terms of both thepositions of the gating boundaries and the diagnostic accuracy.
 
-To reproduce the results reported in the paper, 
-we provide default configuration files which should run out of the box. 
-To do so navigate to the src directory and run the desired main. 
+To run our code:
 
-To use non-default experiment configurations, 
-modify the correspondig default config file found in the configs folder, 
-and change the path_to_yaml variable at the end of each main to match the modified config file. 
+1. Download the data from the following links:
+    * [Panel1 data](https://flowrepository.org/id/FR-FCM-Z27S)
+    * [Panel2 data](https://flowrepository.org/id/FR-FCM-Z27T)
+2. Create a directory labelled cll inside of the data directory
+3. Move the data folders from step one into the cll directory from step 2.
+4. To use non-default settings for an experiment, modify the config file with the matching name as the main you would like to run, otherwise just run the desired main from the command line while in the src directory..
 
-For example to run model X with Y settings, 
-modify Z config file and run the following from the src directory:
 
-'''
-Example code 
-'''
+For example to run experiments using only one panel with default settings follow steps 1-3, navigate to the src directory and enter:
+
+```
+python main_1p.py
+```
+
+To use non-default settings for the panel one experiments, modify the default_1p.yaml file (a list of options for each experiment is at the top of each main file).
 
 ## Authors
 

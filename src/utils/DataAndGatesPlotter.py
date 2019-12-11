@@ -25,10 +25,6 @@ class DataAndGatesPlotter():
         self.dims = self.get_dims()
         self.color = color
 
-        # modification needed to plot reference tree objects
-        # ids2features = self.model.referenceTree.ids2features
-        # self.feature_names = [(ids2features[dim1], ids2features[dim2])
-        #        for (dim1, dim2) in self.dims]
 
     '''
     loads the nodes gate params into a namedtuple
@@ -117,9 +113,6 @@ class DataAndGatesPlotter():
                     # children share the same parent
                     data_stack.append(filtered_data[-1])
 
-                    # to generalize to arbitrary trees:
-                    # move appending to filtered data here I think
-                    # will work
         return outputs, filtered_data
 
     '''
@@ -137,8 +130,6 @@ class DataAndGatesPlotter():
         for node_idx, axis in enumerate(axes):
             self.plot_node(axis, node_idx, hparams)
 
-    # TODO refactor to use a dictionary of plot settings
-    # which has a defautlt setting
     def plot_node(self, axis, node_idx, hparams):
         if 'plot_kde_density' in hparams['plot_params']:
             if hparams['plot_params']['plot_kde_density']:
@@ -153,10 +144,6 @@ class DataAndGatesPlotter():
                 self.filtered_data[node_idx][:, self.dims[node_idx][1]],
                 s=hparams['plot_params']['marker_size'],
             )
-        #        if type(self.model.root).__name__ == 'ModelNode' or type(self.model.root).__name__ == 'SquareModelNode':
-        #            self.plot_gate(axis, node_idx, dashes=(3,1), label='Model')
-        #        else:
-        #            self.plot_gate(axis, node_idx, color='k', label='DAFI')
         if self.color is None:
             self.plot_gate(axis, node_idx, dashes=(3, 1), label='Model')
         else:
@@ -203,10 +190,6 @@ class DataAndGatesPlotterBoth(DataAndGatesPlotter):
         self.dims = self.get_dims()
         self.color = color
 
-        # modification needed to plot reference tree objects
-        # ids2features = self.model.referenceTree.ids2features
-        # self.feature_names = [(ids2features[dim1], ids2features[dim2])
-        #        for (dim1, dim2) in self.dims]
 
     def get_dims(self):
         dims = []
@@ -241,8 +224,6 @@ class DataAndGatesPlotterBoth(DataAndGatesPlotter):
         for node_idx, axis in enumerate(axes):
             self.plot_node(axis, node_idx, hparams)
 
-    # TODO refactor to use a dictionary of plot settings
-    # which has a defautlt setting
     def plot_node(self, axis, node_idx, hparams):
         if 'plot_kde_density' in hparams['plot_params']:
             if hparams['plot_params']['plot_kde_density']:
@@ -257,10 +238,6 @@ class DataAndGatesPlotterBoth(DataAndGatesPlotter):
                 self.filtered_data[node_idx][:, self.dims[node_idx][1]],
                 s=hparams['plot_params']['marker_size'],
             )
-        #        if type(self.model.root).__name__ == 'ModelNode' or type(self.model.root).__name__ == 'SquareModelNode':
-        #            self.plot_gate(axis, node_idx, dashes=(3,1), label='Model')
-        #        else:
-        #            self.plot_gate(axis, node_idx, color='k', label='DAFI')
         if self.color is None:
             self.plot_gate(axis, node_idx, dashes=(3, 1), label='Model')
         else:

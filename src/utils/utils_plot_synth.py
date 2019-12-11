@@ -84,24 +84,6 @@ def plot_synth_data_with_gates(models, concatenated_data, hparams, plot_config={
     final_gates_and_data_plotter.plot_on_axes(flat_axes, hparams)
 
 
-#    keys = [key for key in pickled_model.children_dict.keys()]
-#    node0 = pickled_model.root
-#    node1 = pickled_model.children_dict[keys[3]][0]
-#    node2 = pickled_model.children_dict[keys[3]][1]
-#    node3 = pickled_model.children_dict[keys[2]][0]
-#
-#    gate0 = get_gate(node0, scale[0:2], offset[0:2])
-#    gate1 = get_gate(node1, scale[2:4], offset[2:4])
-#    gate2 = get_gate(node2, scale[4:6], offset[4:6])
-#    gate3 = get_gate(node3, scale[6:], offset[6:])
-
-#    plot_initial_final_gate(axes[0], sample[:, [0, 1]], init_gates[0], gate0, size=size, color='r')
-#    gate0_filtered = filter_2d(sample, gate0, 0, 1)
-#    plot_initial_final_gate(axes[1], gate0_filtered[:, [2, 3]], init_gates[1], gate1, size=4*size, color='r')
-#    plot_initial_final_gate(axes[2], gate0_filtered[:, [4, 5]], init_gates[2], gate2, size=4*size, color='r')
-#    plot_initial_final_gate(axes[3], filter_2d(gate0_filtered, gate2, 4,5)[:, [6, 7]], init_gates[3], gate3, size=10*size, color='r')
-#
-#    fig.savefig('../output/' + saveas, dpi=300, bbox_inches='tight')
 
 
 def plot_synth_depth3_tree_with_data(pickled_model, sample, figsize=(20, 12), ncols=7, hspace=None, wspace=0,

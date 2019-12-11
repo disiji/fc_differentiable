@@ -92,7 +92,6 @@ class HeuristicInitializer:
         # not actually a gate
         if (gate[0] == gate[1]) or (gate[2] == gate[3]):
             return False
-        # will return gates which wont be as expected if you use square nodes
         elif self.consider_all_gates:
             return True
         # smaller side length must be at least one half the other side length
@@ -142,7 +141,6 @@ class HeuristicInitializer:
             return_idx=True
         )
 
-        # this should be correct
         pos_prop = np.sum(pos_data_inside_gate_bool_idxs) / self.pos_data.shape[0]
         neg_prop = np.sum(neg_data_inside_gate_bool_idxs) / self.neg_data.shape[0]
 
